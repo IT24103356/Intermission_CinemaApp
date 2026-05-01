@@ -1,0 +1,138 @@
+const Booking = require('../models/Booking');
+
+// GET all bookings (admin)
+exports.getBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find()
+      .populate('user', 'name email')
+      .populate({
+        path: 'showtime',
+        populate: { path: 'movie', select: 'title genre' },
+      });
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET single booking
+exports.getBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'name email')
+      .populate({
+        path: 'showtime',
+        populate: { path: 'movie', select: 'title genre' },
+      });
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET bookings for logged in user
+exports.getMyBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ user: req.user.id })
+      .populate({
+        path: 'showtime',
+        populate: { path: 'movie', select: 'title genre posterUrl' },
+      });
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Confirmed seat IDs already taken for a showtime (for seat map UI)
+exports.getTakenSeatsForShowtime = async (req, res) => {
+  try {
+    const bookings = await Booking.find({
+      showtime: req.params.showtimeId,
+      status: 'confirmed',
+    }).select('seats');
+    const takenSeats = bookings.flatMap((b) => b.seats);
+    res.json({ takenSeats });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST create booking
+exports.createBooking = async (req, res) => {
+  try {
+    const { showtimeId, seats } = req.body;
+
+    if (!Array.isArray(seats) || seats.length === 0) {
+      return res.status(400).json({ message: 'Select at least one seat' });
+    }
+
+    // Check seats are not already taken
+    const existingBookings = await Booking.find({
+      showtime: showtimeId,
+      status: 'confirmed',
+    });
+    const takenSeats = existingBookings.flatMap((b) => b.seats);
+    const conflict = seats.filter((s) => takenSeats.includes(s));
+    if (conflict.length > 0) {
+      return res.status(400).json({
+        message: `Seats already taken: ${conflict.join(', ')}`,
+      });
+    }
+
+    // Calculate total price (example: $10 per seat)
+    const pricePerSeat = 10;
+    const totalPrice = seats.length * pricePerSeat;
+
+    // Create the booking
+    const booking = await Booking.create({
+      user: req.user.id,
+      showtime: showtimeId,
+      seats,
+      totalPrice,
+      status: 'confirmed',
+    });
+    res.status(201).json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// PUT cancel booking (with seat restoration)
+exports.cancelBooking = async (req, res) => {
+  try {
+    // Step 1 — find the booking
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // Step 2 — make sure it belongs to the logged in user
+    if (booking.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    // Step 3 — check it is not already cancelled
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ message: 'Booking already cancelled' });
+    }
+
+    // Step 4 — cancel the booking (display capacity is recomputed from confirmed bookings)
+    booking.status = 'cancelled';
+    await booking.save();
+
+    res.json({ message: 'Booking cancelled successfully', booking });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// DELETE booking (admin only)
+exports.deleteBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findByIdAndDelete(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    res.json({ message: 'Booking deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
