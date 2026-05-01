@@ -1,0 +1,152 @@
+const mongoose = require('mongoose');
+const Feedback = require('../models/Feedback');
+const Movie    = require('../models/Movie');
+
+// GET all feedback (admin)
+exports.getFeedbacks = async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find()
+      .populate('user',  'name email')
+      .populate('movie', 'title genre');
+    res.json(feedbacks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET single feedback
+exports.getFeedback = async (req, res) => {
+  try {
+    const feedback = await Feedback.findById(req.params.id)
+      .populate('user',  'name email')
+      .populate('movie', 'title genre');
+    if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
+    res.json(feedback);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET all feedback for a specific movie
+exports.getFeedbackByMovie = async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find({ movie: req.params.movieId })
+      .populate('user', 'name');
+    res.json(feedbacks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET average rating for a specific movie
+exports.getAverageRating = async (req, res) => {
+  try {
+    const { movieId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(movieId)) {
+      return res.json({ averageRating: 0, totalReviews: 0 });
+    }
+    const result = await Feedback.aggregate([
+      { $match: { movie: new mongoose.Types.ObjectId(movieId) } },
+      { $group: {
+          _id:           '$movie',
+          averageRating: { $avg: '$rating' },
+          totalReviews:  { $sum: 1 }
+        }
+      }
+    ]);
+
+    if (result.length === 0) {
+      return res.json({ averageRating: 0, totalReviews: 0 });
+    }
+
+    res.json({
+      averageRating: Math.round(result[0].averageRating * 10) / 10,
+      totalReviews:  result[0].totalReviews
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET feedback submitted by logged in user
+exports.getMyFeedback = async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find({ user: req.user.id })
+      .populate('movie', 'title genre posterUrl');
+    res.json(feedbacks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST create feedback
+exports.createFeedback = async (req, res) => {
+  try {
+    const { movieId, rating, comment } = req.body;
+
+    // Check movie exists
+    const movie = await Movie.findById(movieId);
+    if (!movie) return res.status(404).json({ message: 'Movie not found' });
+
+    // Check user has not already reviewed this movie
+    const existing = await Feedback.findOne({
+      user:  req.user.id,
+      movie: movieId
+    });
+    if (existing) {
+      return res.status(400).json({ message: 'You have already reviewed this movie' });
+    }
+
+    const feedback = await Feedback.create({
+      user:    req.user.id,
+      movie:   movieId,
+      rating,
+      comment
+    });
+
+    res.status(201).json(feedback);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+// PUT update feedback
+exports.updateFeedback = async (req, res) => {
+  try {
+    const feedback = await Feedback.findById(req.params.id);
+    if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
+
+    // Make sure it belongs to the logged in user
+    if (feedback.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const updated = await Feedback.findByIdAndUpdate(
+      req.params.id,
+      { rating: req.body.rating, comment: req.body.comment },
+      { new: true, runValidators: true }
+    );
+
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+// DELETE feedback
+exports.deleteFeedback = async (req, res) => {
+  try {
+    const feedback = await Feedback.findById(req.params.id);
+    if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
+
+    // Allow owner or admin to delete
+    if (feedback.user.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    await Feedback.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Feedback deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
