@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -56,14 +55,12 @@ function StarDisplay({ value, size = 20 }) {
   );
 }
 
-export default function FeedbackScreen() {
+export default function FeedbackScreen({ navigation }) {
   const { user } = useContext(AuthContext);
-  const isAdmin = user?.role === 'admin';
-  const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
 
   const [movies, setMovies] = useState([]);
-  const [feedbackList, setFeedbackList] = useState([]);
+  const [myFeedback, setMyFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [movieModal, setMovieModal] = useState(false);
@@ -71,20 +68,40 @@ export default function FeedbackScreen() {
   const [editModal, setEditModal] = useState(false);
   const [editRating, setEditRating] = useState(3);
   const [editComment, setEditComment] = useState('');
+  const [reviewFilterMovieId, setReviewFilterMovieId] = useState('all');
 
   const [pickMovie, setPickMovie] = useState(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
 
   const reviewedIds = new Set(
-    feedbackList.map(f => String(f.movie?._id || f.movie || ''))
+    myFeedback.map(f => String(f.movie?._id || f.movie || ''))
   );
+
+  const reviewFilterOptions = useMemo(() => {
+    const map = new Map();
+    myFeedback.forEach(f => {
+      const id = String(f.movie?._id || f.movie || '');
+      const title = f.movie?.title || 'Movie';
+      if (id && !map.has(id)) {
+        map.set(id, { id, title });
+      }
+    });
+    return [{ id: 'all', title: 'All movies' }, ...Array.from(map.values())];
+  }, [myFeedback]);
+
+  const filteredMyFeedback = useMemo(() => {
+    if (reviewFilterMovieId === 'all') return myFeedback;
+    return myFeedback.filter(
+      f => String(f.movie?._id || f.movie || '') === reviewFilterMovieId
+    );
+  }, [myFeedback, reviewFilterMovieId]);
 
   const load = useCallback(async () => {
     try {
       const [mRes, fRes] = await Promise.allSettled([
         api.get('/movies'),
-        user ? api.get(isAdmin ? '/feedback' : '/feedback/my') : Promise.resolve({ data: [] }),
+        user ? api.get('/feedback/my') : Promise.resolve({ data: [] }),
       ]);
       if (mRes.status === 'fulfilled' && Array.isArray(mRes.value.data)) {
         setMovies(mRes.value.data);
@@ -92,17 +109,17 @@ export default function FeedbackScreen() {
         setMovies([]);
       }
       if (fRes.status === 'fulfilled' && Array.isArray(fRes.value.data)) {
-        setFeedbackList(fRes.value.data);
+        setMyFeedback(fRes.value.data);
       } else {
-        setFeedbackList([]);
+        setMyFeedback([]);
       }
     } catch {
       setMovies([]);
-      setFeedbackList([]);
+      setMyFeedback([]);
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin]);
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -196,13 +213,22 @@ export default function FeedbackScreen() {
   };
 
   const padBottom = tabBarHeight + 16;
-  const padTop = Math.max(insets.top, 12) + 8;
+  const padTop = 8;
 
   if (!user) {
     return (
       <View style={[styles.emptyRoot, { paddingTop: padTop, paddingBottom: padBottom }]}>
-        <Text style={styles.h1}>Feedback</Text>
-        <Text style={styles.mutedP}>Log in to rate movies you’ve seen at our cinema.</Text>
+        <View style={styles.topBanner}>
+          <View style={styles.bannerHeader}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
+              <Text style={styles.backButtonText}>←</Text>
+            </TouchableOpacity>
+            <View style={styles.bannerTextWrap}>
+              <Text style={styles.h1}>Feedback</Text>
+              <Text style={styles.bannerCaption}>Log in to rate movies you’ve seen at our cinema.</Text>
+            </View>
+          </View>
+        </View>
       </View>
     );
   }
@@ -223,59 +249,91 @@ export default function FeedbackScreen() {
       contentContainerStyle={{ paddingTop: padTop, paddingBottom: padBottom, paddingHorizontal: 20 }}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.h1}>{isAdmin ? 'Manage Feedback' : 'Feedback'}</Text>
-      <Text style={styles.caption}>
-        {isAdmin ? 'View and moderate user reviews for all movies.' : 'Share a 1–5 star rating and optional note for any movie in our list.'}
-      </Text>
-
-      {!isAdmin && (
-        <View style={styles.card}>
-          <Text style={styles.label}>Movie</Text>
-          <TouchableOpacity
-            style={styles.select}
-            onPress={() => setMovieModal(true)}
-            activeOpacity={0.85}
-          >
-            <Text style={pickMovie ? styles.selectValue : styles.selectPh}>
-              {pickMovie ? pickMovie.title : 'Select a movie…'}
-            </Text>
+      <View style={styles.topBanner}>
+        <View style={styles.bannerHeader}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
+            <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
-
-          <Text style={styles.label}>Your rating</Text>
-          <Stars value={rating} onChange={setRating} />
-          {rating > 0 && <Text style={styles.ratingHint}>{rating} — {ratingLabel(rating)}</Text>}
-
-          <Text style={styles.label}>Comment (optional)</Text>
-          <TextInput
-            style={styles.textArea}
-            placeholder="What did you think?"
-            placeholderTextColor="#666"
-            value={comment}
-            onChangeText={setComment}
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, saving && styles.btnDisabled]}
-            onPress={submit}
-            disabled={saving}
-          >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnT}>Post review</Text>}
-          </TouchableOpacity>
-
-          {toRate.length === 0 && movies.length > 0 && (
-            <Text style={styles.hint}>
-              You’ve rated every movie in the list. Thanks!
+          <View style={styles.bannerTextWrap}>
+            <Text style={styles.h1}>Feedback</Text>
+            <Text style={styles.bannerCaption}>
+              Share a 1–5 star rating and optional note for any movie in our list.
             </Text>
-          )}
+          </View>
         </View>
-      )}
+      </View>
 
-      <Text style={styles.sectionTitle}>{isAdmin ? 'All User Reviews' : 'Your reviews'}</Text>
-      {feedbackList.length === 0 ? (
-        <Text style={styles.mutedP}>{isAdmin ? 'No user reviews found.' : 'You haven’t posted a review yet.'}</Text>
+      <View style={styles.card}>
+        <Text style={styles.label}>Movie</Text>
+        <TouchableOpacity
+          style={styles.select}
+          onPress={() => setMovieModal(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={pickMovie ? styles.selectValue : styles.selectPh}>
+            {pickMovie ? pickMovie.title : 'Select a movie…'}
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.label}>Your rating</Text>
+        <Stars value={rating} onChange={setRating} />
+        {rating > 0 && <Text style={styles.ratingHint}>{rating} — {ratingLabel(rating)}</Text>}
+
+        <Text style={styles.label}>Comment (optional)</Text>
+        <TextInput
+          style={styles.textArea}
+          placeholder="What did you think?"
+          placeholderTextColor="#666"
+          value={comment}
+          onChangeText={setComment}
+          multiline
+        />
+
+        <TouchableOpacity
+          style={[styles.primaryBtn, saving && styles.btnDisabled]}
+          onPress={submit}
+          disabled={saving}
+        >
+          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnT}>Post review</Text>}
+        </TouchableOpacity>
+
+        {toRate.length === 0 && movies.length > 0 && (
+          <Text style={styles.hint}>
+            You’ve rated every movie in the list. Thanks!
+          </Text>
+        )}
+      </View>
+
+      <Text style={styles.sectionTitle}>Your reviews</Text>
+      {myFeedback.length === 0 ? (
+        <Text style={styles.mutedP}>You haven’t posted a review yet.</Text>
       ) : (
-        feedbackList.map(f => {
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {reviewFilterOptions.map(opt => {
+              const active = reviewFilterMovieId === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => setReviewFilterMovieId(opt.id)}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {opt.title}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {filteredMyFeedback.length === 0 ? (
+            <Text style={styles.mutedP}>No reviews for the selected movie.</Text>
+          ) : (
+            filteredMyFeedback.map(f => {
           const title = f.movie?.title || 'Movie';
           return (
             <View key={f._id} style={styles.reviewCard}>
@@ -288,31 +346,26 @@ export default function FeedbackScreen() {
                   </View>
                 )}
                 <View style={styles.reviewBody}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={[styles.reviewTitle, { flex: 1 }]} numberOfLines={1}>
-                      {title}
-                    </Text>
-                    {isAdmin && f.user?.name && (
-                      <Text style={{ color: MUTED, fontSize: 12 }}>by {f.user.name}</Text>
-                    )}
-                  </View>
+                  <Text style={styles.reviewTitle} numberOfLines={2}>
+                    {title}
+                  </Text>
                   <StarDisplay value={f.rating} size={20} />
                   {f.comment ? <Text style={styles.reviewComment}>{f.comment}</Text> : null}
                 </View>
               </View>
               <View style={styles.reviewActions}>
-                {!isAdmin && (
-                  <TouchableOpacity onPress={() => openEdit(f)}>
-                    <Text style={styles.link}>Edit</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity onPress={() => openEdit(f)}>
+                  <Text style={styles.link}>Edit</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => removeFeedback(f._id)}>
-                  <Text style={styles.dangerLink}>{isAdmin ? 'Delete Review' : 'Delete'}</Text>
+                  <Text style={styles.dangerLink}>Delete</Text>
                 </TouchableOpacity>
               </View>
             </View>
           );
-        })
+            })
+          )}
+        </>
       )}
 
       <Modal visible={movieModal} animationType="slide" transparent>
@@ -380,7 +433,34 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   emptyRoot: { flex: 1, backgroundColor: BG, paddingHorizontal: 20, justifyContent: 'center' },
   centered: { flex: 1, backgroundColor: BG, alignItems: 'center', justifyContent: 'center' },
-  h1: { color: '#fff', fontSize: 26, fontWeight: '700' },
+  topBanner: {
+    backgroundColor: '#e50914',
+    borderRadius: 28,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    marginBottom: 14,
+    marginHorizontal: -24,
+    borderWidth: 1,
+    borderColor: '#c80712',
+  },
+  bannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  bannerTextWrap: { flex: 1 },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#aa1d27',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
+  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
+  h1: { color: '#fff', fontSize: 24, fontWeight: '700' },
+  bannerCaption: { color: '#ffd7db', fontSize: 14, marginTop: 6, lineHeight: 20 },
   caption: { color: MUTED, fontSize: 14, marginTop: 8, marginBottom: 20, lineHeight: 20 },
   card: {
     backgroundColor: CARD,
@@ -425,6 +505,18 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.7 },
   hint: { color: MUTED, fontSize: 13, marginTop: 12, textAlign: 'center' },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '600', marginBottom: 12 },
+  filterRow: { paddingBottom: 10, gap: 8 },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: CARD,
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  filterChipActive: { borderColor: ACCENT, backgroundColor: 'rgba(229,9,20,0.12)' },
+  filterChipText: { color: MUTED, fontSize: 13, fontWeight: '600' },
+  filterChipTextActive: { color: ACCENT },
   mutedP: { color: MUTED, fontSize: 15, lineHeight: 22 },
   reviewCard: {
     backgroundColor: CARD,

@@ -7,7 +7,8 @@ exports.getFeedbacks = async (req, res) => {
   try {
     const feedbacks = await Feedback.find()
       .populate('user',  'name email')
-      .populate('movie', 'title genre');
+      .populate('movie', 'title genre')
+      .populate('adminReply.repliedBy', 'name email');
     res.json(feedbacks);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -19,7 +20,8 @@ exports.getFeedback = async (req, res) => {
   try {
     const feedback = await Feedback.findById(req.params.id)
       .populate('user',  'name email')
-      .populate('movie', 'title genre');
+      .populate('movie', 'title genre')
+      .populate('adminReply.repliedBy', 'name email');
     if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
     res.json(feedback);
   } catch (err) {
@@ -31,7 +33,8 @@ exports.getFeedback = async (req, res) => {
 exports.getFeedbackByMovie = async (req, res) => {
   try {
     const feedbacks = await Feedback.find({ movie: req.params.movieId })
-      .populate('user', 'name');
+      .populate('user', 'name')
+      .populate('adminReply.repliedBy', 'name');
     res.json(feedbacks);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -72,7 +75,8 @@ exports.getAverageRating = async (req, res) => {
 exports.getMyFeedback = async (req, res) => {
   try {
     const feedbacks = await Feedback.find({ user: req.user.id })
-      .populate('movie', 'title genre posterUrl');
+      .populate('movie', 'title genre posterUrl')
+      .populate('adminReply.repliedBy', 'name');
     res.json(feedbacks);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -146,6 +150,36 @@ exports.deleteFeedback = async (req, res) => {
 
     await Feedback.findByIdAndDelete(req.params.id);
     res.json({ message: 'Feedback deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// PUT admin reply to feedback
+exports.replyToFeedback = async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ message: 'Reply message is required' });
+    }
+
+    const feedback = await Feedback.findById(req.params.id);
+    if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
+
+    feedback.adminReply = {
+      message: message.trim(),
+      repliedBy: req.user.id,
+      repliedAt: new Date(),
+    };
+
+    await feedback.save();
+
+    const populated = await Feedback.findById(feedback._id)
+      .populate('user', 'name email')
+      .populate('movie', 'title genre')
+      .populate('adminReply.repliedBy', 'name email');
+
+    res.json(populated);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
