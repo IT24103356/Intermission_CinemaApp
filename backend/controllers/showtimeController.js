@@ -1,4 +1,5 @@
 const Showtime = require('../models/Showtime');
+const Movie = require('../models/Movie');
 const {
   withComputedAvailableOne,
   withComputedAvailableMany,
@@ -65,6 +66,12 @@ exports.getShowtimesByDate = async (req, res) => {
 // POST create showtime
 exports.createShowtime = async (req, res) => {
   try {
+    if (req.body?.movie) {
+      const m = await Movie.findOne({ _id: req.body.movie, deletedAt: null });
+      if (!m) {
+        return res.status(400).json({ message: 'Movie not found or removed from catalog' });
+      }
+    }
     const showtime = await Showtime.create(req.body);
     const out = await withComputedAvailableOne(showtime);
     res.status(201).json(out);
@@ -76,6 +83,12 @@ exports.createShowtime = async (req, res) => {
 // PUT update showtime
 exports.updateShowtime = async (req, res) => {
   try {
+    if (req.body?.movie) {
+      const m = await Movie.findOne({ _id: req.body.movie, deletedAt: null });
+      if (!m) {
+        return res.status(400).json({ message: 'Movie not found or removed from catalog' });
+      }
+    }
     const showtime = await Showtime.findByIdAndUpdate(
       req.params.id,
       req.body,

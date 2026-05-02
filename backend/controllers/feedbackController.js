@@ -90,8 +90,7 @@ exports.createFeedback = async (req, res) => {
   try {
     const { movieId, rating, comment } = req.body;
 
-    // Check movie exists
-    const movie = await Movie.findById(movieId);
+    const movie = await Movie.findOne({ _id: movieId, deletedAt: null });
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
 
     const attendedEnded = await Booking.find({
