@@ -32,7 +32,17 @@ export default function RegisterScreen({ navigation }) {
       setLoading(true);
       await register(name.trim(), email.trim(), password);
     } catch (err) {
-      Alert.alert('Registration Failed', err.response?.data?.message || 'Something went wrong');
+      const msg =
+        err.response?.data?.message ||
+        (err.code === 'ECONNABORTED'
+          ? 'Request timed out. Set EXPO_PUBLIC_API_URL in Netlify to your full Railway URL (https://…/api) and redeploy.'
+          : null) ||
+        (err.message === 'Network Error'
+          ? 'Cannot reach the API. Use https://your-app.up.railway.app/api in Netlify env and redeploy.'
+          : null) ||
+        err.message ||
+        'Something went wrong';
+      Alert.alert('Registration Failed', msg);
     } finally {
       setLoading(false);
     }
