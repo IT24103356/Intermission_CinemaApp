@@ -11,14 +11,24 @@ export function buildWatchedMovieRowsFromBookings(bookings) {
   for (const b of bookings) {
     if (b.status !== 'confirmed') continue;
     const st = b.showtime;
+    if (!st) continue;
     const m = st?.movie;
-    if (!st || !m) continue;
-    if (!isShowEnded(st, m.duration)) continue;
-    const id = String(m._id);
-    const endMs = showEndMsUtc(st, m.duration);
+    const duration = m?.duration ?? b.movieDuration;
+    const title = String(m?.title || b.movieTitle || '').trim();
+    if (!title) continue;
+    if (!isShowEnded(st, duration)) continue;
+    const mid = m?._id || b.movieRef || st.movie;
+    const synthetic = {
+      _id: mid,
+      title,
+      posterUrl: m?.posterUrl || b.moviePosterUrl,
+      duration,
+    };
+    const id = mid != null ? String(mid) : `st:${String(st._id)}`;
+    const endMs = showEndMsUtc(st, duration);
     const prev = best.get(id);
     if (!prev || endMs > prev.endMs) {
-      best.set(id, { movie: m, endMs });
+      best.set(id, { movie: synthetic, endMs });
     }
   }
   return Array.from(best.values())

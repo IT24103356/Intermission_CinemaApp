@@ -72,8 +72,9 @@ export default function MyBookingsScreen({ navigation }) {
         if (b.status !== 'confirmed') return false;
         const st = b.showtime;
         const m = st?.movie;
+        const runtime = m?.duration ?? b.movieDuration;
         if (!st) return true;
-        return !isShowEnded(st, m?.duration);
+        return !isShowEnded(st, runtime);
       }),
     [bookings]
   );
@@ -85,8 +86,9 @@ export default function MyBookingsScreen({ navigation }) {
         if (b.status !== 'confirmed') return false;
         const st = b.showtime;
         const m = st?.movie;
+        const runtime = m?.duration ?? b.movieDuration;
         if (!st) return false;
-        return isShowEnded(st, m?.duration);
+        return isShowEnded(st, runtime);
       }),
     [bookings]
   );
@@ -99,7 +101,8 @@ export default function MyBookingsScreen({ navigation }) {
     if (item.status === 'cancelled') return;
     const st = item.showtime;
     const m = st?.movie;
-    if (st && isShowEnded(st, m?.duration)) {
+    const runtime = m?.duration ?? item.movieDuration;
+    if (st && isShowEnded(st, runtime)) {
       Alert.alert('Cannot cancel', 'This screening has already ended.');
       return;
     }
@@ -175,7 +178,7 @@ export default function MyBookingsScreen({ navigation }) {
       {tab === 'watched' ? (
         <FlatList
           data={listData}
-          keyExtractor={(item) => String(item.movie._id)}
+          keyExtractor={(item) => String(item.movie?._id ?? item.lastEndedAt)}
           contentContainerStyle={[styles.list, { paddingBottom: 24 + tabBarHeight }]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e50914" />
@@ -218,11 +221,12 @@ export default function MyBookingsScreen({ navigation }) {
             const m = item.showtime?.movie;
             const st = item.showtime;
             const isCancelled = item.status === 'cancelled';
-            const ended = st && isShowEnded(st, m?.duration);
+            const runtime = m?.duration ?? item.movieDuration;
+            const ended = st && isShowEnded(st, runtime);
             return (
               <View style={[styles.card, isCancelled && styles.cardCanceled]}>
                 <Text style={styles.movieName} numberOfLines={1}>
-                  {m?.title || 'Movie'}
+                  {m?.title || item.movieTitle || 'Movie'}
                 </Text>
                 {st && (
                   <Text style={styles.line}>

@@ -3,6 +3,7 @@ const Feedback = require('../models/Feedback');
 const Movie    = require('../models/Movie');
 const Booking  = require('../models/Booking');
 const { isShowEnded } = require('../utils/showtimeTiming');
+const { mergeMovieSnapshotIntoBookingPlain } = require('../utils/bookingMovieSnapshot');
 
 // GET all feedback (admin)
 exports.getFeedbacks = async (req, res) => {
@@ -90,7 +91,7 @@ exports.createFeedback = async (req, res) => {
   try {
     const { movieId, rating, comment } = req.body;
 
-    const movie = await Movie.findOne({ _id: movieId, deletedAt: null });
+    const movie = await Movie.findById(movieId);
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
 
     const attendedEnded = await Booking.find({
@@ -98,14 +99,19 @@ exports.createFeedback = async (req, res) => {
       status: 'confirmed',
     }).populate({
       path: 'showtime',
-      populate: { path: 'movie', select: '_id duration' },
+      populate: { path: 'movie', select: '_id duration title' },
     });
     const canReview = attendedEnded.some(b => {
-      const st = b.showtime;
-      if (!st?.movie) return false;
-      const mid = st.movie._id?.toString?.() || String(st.movie);
-      if (mid !== String(movieId)) return false;
-      return isShowEnded(st, st.movie.duration);
+      const o = b.toObject ? b.toObject() : { ...b };
+      mergeMovieSnapshotIntoBookingPlain(o);
+      const st = o.showtime;
+      if (!st) return false;
+      const mid =
+        (o.movieRef && String(o.movieRef)) ||
+        (st.movie && (st.movie._id?.toString?.() || String(st.movie)));
+      if (!mid || mid !== String(movieId)) return false;
+      const dur = st.movie?.duration ?? o.movieDuration;
+      return isShowEnded(st, dur);
     });
     if (!canReview) {
       return res.status(403).json({

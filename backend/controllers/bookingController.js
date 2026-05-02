@@ -6,6 +6,7 @@ const {
   withComputedAvailableOne,
 } = require('../utils/showtimeAvailability');
 const { isShowEnded, showEndMsUtc } = require('../utils/showtimeTiming');
+const { mergeMovieSnapshotIntoBookingPlain } = require('../utils/bookingMovieSnapshot');
 
 async function enrichBookingShowtime(booking) {
   if (!booking) return booking;
@@ -14,6 +15,11 @@ async function enrichBookingShowtime(booking) {
     o.showtime = await withComputedAvailableOne(o.showtime);
   }
   return o;
+}
+
+async function enrichBookingForClient(booking) {
+  const o = await enrichBookingShowtime(booking);
+  return mergeMovieSnapshotIntoBookingPlain(o);
 }
 
 // GET all bookings (admin)
@@ -25,9 +31,7 @@ exports.getBookings = async (req, res) => {
         path:     'showtime',
         populate: { path: 'movie', select: 'title genre' }
       });
-    const out = await Promise.all(
-      bookings.map(b => enrichBookingShowtime(b))
-    );
+    const out = await Promise.all(bookings.map(b => enrichBookingForClient(b)));
     res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -44,7 +48,7 @@ exports.getBooking = async (req, res) => {
         populate: { path: 'movie', select: 'title genre' }
       });
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
-    res.json(await enrichBookingShowtime(booking));
+    res.json(await enrichBookingForClient(booking));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -58,9 +62,7 @@ exports.getMyBookings = async (req, res) => {
         path:     'showtime',
         populate: { path: 'movie', select: 'title genre posterUrl duration' }
       });
-    const out = await Promise.all(
-      bookings.map(b => enrichBookingShowtime(b))
-    );
+    const out = await Promise.all(bookings.map(b => enrichBookingForClient(b)));
     res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -76,11 +78,13 @@ exports.getMyWatchedMovies = async (req, res) => {
     });
     const bestByMovie = new Map();
     for (const b of bookings) {
-      const st = b.showtime;
+      const o = b.toObject ? b.toObject() : { ...b };
+      mergeMovieSnapshotIntoBookingPlain(o);
+      const st = o.showtime;
       const m = st?.movie;
-      if (!st || !m) continue;
+      if (!st || !m || !String(m.title || '').trim()) continue;
       if (!isShowEnded(st, m.duration)) continue;
-      const id = String(m._id);
+      const id = String(m._id || o.movieRef || st._id);
       const endMs = showEndMsUtc(st, m.duration);
       const prev = bestByMovie.get(id);
       if (!prev || endMs > prev.endMs) {
@@ -125,9 +129,10 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Select at least one seat' });
     }
 
-    // Step 1 — find the showtime
-    const showtime = await Showtime.findById(showtimeId);
+    // Step 1 — find the showtime (movie needed for snapshot on booking)
+    const showtime = await Showtime.findById(showtimeId).populate('movie', 'title posterUrl duration');
     if (!showtime) return res.status(404).json({ message: 'Showtime not found' });
+    const movieDoc = showtime.movie;
 
     // Step 2 — remaining = total capacity minus already sold (bookings are source of truth)
     const sold   = await getConfirmedSeatsSoldCount(showtime._id);
@@ -155,13 +160,17 @@ exports.createBooking = async (req, res) => {
     const pricePerSeat = 10;
     const totalPrice   = seats.length * pricePerSeat;
 
-    // Step 5 — create the booking
+    // Step 5 — create the booking (snapshot keeps title in archive if movie is later archived)
     const booking = await Booking.create({
       user:       req.user.id,
       showtime:   showtime._id,
       seats,
       totalPrice,
-      status:     'confirmed'
+      status:     'confirmed',
+      movieRef:   movieDoc?._id || showtime.movie,
+      movieTitle: movieDoc?.title,
+      moviePosterUrl: movieDoc?.posterUrl || undefined,
+      movieDuration: typeof movieDoc?.duration === 'number' ? movieDoc.duration : undefined,
     });
 
     // availableSeats is derived in API responses from totalSeats & bookings (no counter drift)
@@ -192,7 +201,9 @@ exports.cancelBooking = async (req, res) => {
       return res.status(400).json({ message: 'Booking already cancelled' });
     }
 
-    if (booking.showtime && isShowEnded(booking.showtime, booking.showtime.movie?.duration)) {
+    const endDuration =
+      booking.showtime?.movie?.duration ?? booking.movieDuration;
+    if (booking.showtime && isShowEnded(booking.showtime, endDuration)) {
       return res.status(400).json({ message: 'This screening has ended; the booking cannot be cancelled' });
     }
 

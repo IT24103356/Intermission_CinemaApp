@@ -59,7 +59,7 @@ exports.deleteMovie = async (req, res) => {
       { new: true }
     );
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
-    res.json({ message: 'Movie removed from catalog', id: movie._id });
+    res.json({ message: 'Movie archived (removed from catalog)', id: movie._id });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

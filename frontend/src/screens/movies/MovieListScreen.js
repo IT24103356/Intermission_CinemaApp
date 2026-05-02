@@ -135,9 +135,9 @@ export default function MovieListScreen({ navigation }) {
       await api.delete(`/movies/${id}`);
       setMovies(prev => prev.filter(movie => movie._id !== id));
       setPendingDeleteMovie(null);
-      Alert.alert('Success', 'Movie removed from catalog. Past bookings and reviews are kept.');
+      Alert.alert('Success', 'Movie archived. It no longer appears in the catalog; bookings and reviews keep the title.');
     } catch (err) {
-      Alert.alert('Delete Failed', err.response?.data?.message || 'Unable to delete movie');
+      Alert.alert('Archive failed', err.response?.data?.message || 'Unable to archive movie');
     } finally {
       setDeleteMovieSubmitting(false);
     }
@@ -212,7 +212,7 @@ export default function MovieListScreen({ navigation }) {
               onPress={() => setPendingDeleteMovie(item)}
               hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
             >
-              <Text style={styles.inlineActionText}>Delete</Text>
+              <Text style={styles.inlineActionText}>Archive</Text>
             </Pressable>
           )}
         </View>
@@ -274,7 +274,7 @@ export default function MovieListScreen({ navigation }) {
             onPress={() => setPendingDeleteMovie(item)}
             hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
           >
-            <Text style={styles.inlineActionText}>Delete</Text>
+            <Text style={styles.inlineActionText}>Archive</Text>
           </Pressable>
         </View>
       </View>
@@ -453,9 +453,9 @@ export default function MovieListScreen({ navigation }) {
             onPress={() => !deleteMovieSubmitting && setPendingDeleteMovie(null)}
           />
           <View style={styles.deleteModalCard}>
-            <Text style={styles.deleteModalTitle}>Remove from catalog?</Text>
+            <Text style={styles.deleteModalTitle}>Archive this movie?</Text>
             <Text style={styles.deleteModalBody}>
-              {`"${pendingDeleteMovie?.title ?? ''}" will disappear from the catalog and movie pages. Past bookings, archive entries, and customer reviews stay linked to this title. New showtimes cannot target this listing.`}
+              {`"${pendingDeleteMovie?.title ?? ''}" will be removed from the home list and movie pages. Past bookings, Archive, Watched, and reviews will still show this title. You cannot attach new showtimes to this listing.`}
             </Text>
             <View style={styles.deleteModalActions}>
               <TouchableOpacity
@@ -473,7 +473,7 @@ export default function MovieListScreen({ navigation }) {
                 {deleteMovieSubmitting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.deleteModalBtnDangerT}>Delete</Text>
+                  <Text style={styles.deleteModalBtnDangerT}>Archive</Text>
                 )}
               </TouchableOpacity>
             </View>
