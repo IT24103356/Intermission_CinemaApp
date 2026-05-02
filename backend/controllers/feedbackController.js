@@ -3,7 +3,10 @@ const Feedback = require('../models/Feedback');
 const Movie    = require('../models/Movie');
 const Booking  = require('../models/Booking');
 const { isShowEnded } = require('../utils/showtimeTiming');
-const { mergeMovieSnapshotIntoBookingPlain } = require('../utils/bookingMovieSnapshot');
+const {
+  mergeMovieSnapshotIntoBookingPlain,
+  resolveMoviesOntoPlainBookings,
+} = require('../utils/bookingMovieSnapshot');
 
 // GET all feedback (admin)
 exports.getFeedbacks = async (req, res) => {
@@ -97,12 +100,10 @@ exports.createFeedback = async (req, res) => {
     const attendedEnded = await Booking.find({
       user: req.user.id,
       status: 'confirmed',
-    }).populate({
-      path: 'showtime',
-      populate: { path: 'movie', select: '_id duration title' },
-    });
-    const canReview = attendedEnded.some(b => {
-      const o = b.toObject ? b.toObject() : { ...b };
+    }).populate('showtime');
+    const plains = attendedEnded.map(b => (b.toObject ? b.toObject() : { ...b }));
+    await resolveMoviesOntoPlainBookings(plains);
+    const canReview = plains.some(o => {
       mergeMovieSnapshotIntoBookingPlain(o);
       const st = o.showtime;
       if (!st) return false;

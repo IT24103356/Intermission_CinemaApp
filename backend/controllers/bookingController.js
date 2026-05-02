@@ -1,12 +1,16 @@
 const Booking  = require('../models/Booking');
 const Showtime = require('../models/Showtime');
+const Movie    = require('../models/Movie');
 const {
   getConfirmedSeatsSoldCount,
   remainingFromTotalAndSold,
   withComputedAvailableOne,
 } = require('../utils/showtimeAvailability');
 const { isShowEnded, showEndMsUtc } = require('../utils/showtimeTiming');
-const { mergeMovieSnapshotIntoBookingPlain } = require('../utils/bookingMovieSnapshot');
+const {
+  mergeMovieSnapshotIntoBookingPlain,
+  resolveMoviesOntoPlainBookings,
+} = require('../utils/bookingMovieSnapshot');
 
 async function enrichBookingShowtime(booking) {
   if (!booking) return booking;
@@ -19,19 +23,23 @@ async function enrichBookingShowtime(booking) {
 
 async function enrichBookingForClient(booking) {
   const o = await enrichBookingShowtime(booking);
+  await resolveMoviesOntoPlainBookings([o]);
   return mergeMovieSnapshotIntoBookingPlain(o);
+}
+
+async function enrichManyBookingsForClient(bookings) {
+  const plainOs = await Promise.all(bookings.map(b => enrichBookingShowtime(b)));
+  await resolveMoviesOntoPlainBookings(plainOs);
+  return plainOs.map(o => mergeMovieSnapshotIntoBookingPlain(o));
 }
 
 // GET all bookings (admin)
 exports.getBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
-      .populate('user',     'name email')
-      .populate({
-        path:     'showtime',
-        populate: { path: 'movie', select: 'title genre' }
-      });
-    const out = await Promise.all(bookings.map(b => enrichBookingForClient(b)));
+      .populate('user', 'name email')
+      .populate('showtime');
+    const out = await enrichManyBookingsForClient(bookings);
     res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -42,11 +50,8 @@ exports.getBookings = async (req, res) => {
 exports.getBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id)
-      .populate('user',     'name email')
-      .populate({
-        path:     'showtime',
-        populate: { path: 'movie', select: 'title genre' }
-      });
+      .populate('user', 'name email')
+      .populate('showtime');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     res.json(await enrichBookingForClient(booking));
   } catch (err) {
@@ -57,12 +62,8 @@ exports.getBooking = async (req, res) => {
 // GET bookings for logged in user
 exports.getMyBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find({ user: req.user.id })
-      .populate({
-        path:     'showtime',
-        populate: { path: 'movie', select: 'title genre posterUrl duration' }
-      });
-    const out = await Promise.all(bookings.map(b => enrichBookingForClient(b)));
+    const bookings = await Booking.find({ user: req.user.id }).populate('showtime');
+    const out = await enrichManyBookingsForClient(bookings);
     res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -72,14 +73,12 @@ exports.getMyBookings = async (req, res) => {
 // Unique movies from confirmed bookings whose screening has ended (for feedback / "watched")
 exports.getMyWatchedMovies = async (req, res) => {
   try {
-    const bookings = await Booking.find({ user: req.user.id, status: 'confirmed' }).populate({
-      path: 'showtime',
-      populate: { path: 'movie', select: 'title genre posterUrl duration' },
-    });
+    const bookings = await Booking.find({ user: req.user.id, status: 'confirmed' }).populate(
+      'showtime'
+    );
+    const plainOs = await enrichManyBookingsForClient(bookings);
     const bestByMovie = new Map();
-    for (const b of bookings) {
-      const o = b.toObject ? b.toObject() : { ...b };
-      mergeMovieSnapshotIntoBookingPlain(o);
+    for (const o of plainOs) {
       const st = o.showtime;
       const m = st?.movie;
       if (!st || !m || !String(m.title || '').trim()) continue;
@@ -185,10 +184,7 @@ exports.createBooking = async (req, res) => {
 exports.cancelBooking = async (req, res) => {
   try {
     // Step 1 — find the booking
-    const booking = await Booking.findById(req.params.id).populate({
-      path: 'showtime',
-      populate: { path: 'movie', select: 'duration' },
-    });
+    const booking = await Booking.findById(req.params.id).populate('showtime');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
     // Step 2 — make sure it belongs to the logged in user
@@ -201,8 +197,9 @@ exports.cancelBooking = async (req, res) => {
       return res.status(400).json({ message: 'Booking already cancelled' });
     }
 
-    const endDuration =
-      booking.showtime?.movie?.duration ?? booking.movieDuration;
+    const mid = booking.showtime?.movie;
+    const m = mid ? await Movie.findById(mid).select('duration').lean() : null;
+    const endDuration = m?.duration ?? booking.movieDuration;
     if (booking.showtime && isShowEnded(booking.showtime, endDuration)) {
       return res.status(400).json({ message: 'This screening has ended; the booking cannot be cancelled' });
     }
