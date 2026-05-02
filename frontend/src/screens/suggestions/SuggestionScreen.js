@@ -5,10 +5,12 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   FlatList,
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -38,7 +40,7 @@ function isOwner(s, userId) {
   return String(uid) === String(userId);
 }
 
-export default function SuggestionScreen() {
+export default function SuggestionScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const tabBarHeight = useBottomTabBarHeight();
   const userId = user?._id;
@@ -52,6 +54,8 @@ export default function SuggestionScreen() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -129,22 +133,18 @@ export default function SuggestionScreen() {
     }
   };
 
-  const removeSuggestion = s => {
-    Alert.alert('Remove request', 'Delete this movie request?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.delete(`/suggestions/${s._id}`);
-            await load();
-          } catch (err) {
-            Alert.alert('Error', err.response?.data?.message || 'Delete failed');
-          }
-        },
-      },
-    ]);
+  const confirmRemoveSuggestion = async () => {
+    if (!pendingDelete?._id) return;
+    try {
+      setDeleting(true);
+      await api.delete(`/suggestions/${pendingDelete._id}`);
+      setPendingDelete(null);
+      await load();
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const renderItem = ({ item: s }) => {
@@ -185,9 +185,13 @@ export default function SuggestionScreen() {
             </TouchableOpacity>
           )}
           {user && own && s.status === 'pending' && (
-            <TouchableOpacity onPress={() => removeSuggestion(s)}>
+            <Pressable
+              onPress={() => setPendingDelete(s)}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+              style={({ pressed }) => [styles.deletePress, pressed && styles.deletePressPressed]}
+            >
               <Text style={styles.dangerT}>Delete</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
       </View>
@@ -279,6 +283,7 @@ export default function SuggestionScreen() {
           data={list}
           keyExtractor={item => item._id}
           renderItem={renderItem}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: padBottom, flexGrow: 1 }}
           ListEmptyComponent={
             <Text style={styles.empty}>
@@ -292,6 +297,46 @@ export default function SuggestionScreen() {
           }
         />
       )}
+
+      <Modal
+        visible={pendingDelete != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleting && setPendingDelete(null)}
+      >
+        <View style={styles.deleteModalWrap}>
+          <Pressable
+            style={styles.deleteModalBackdrop}
+            onPress={() => !deleting && setPendingDelete(null)}
+          />
+          <View style={styles.deleteModalCard}>
+            <Text style={styles.deleteModalTitle}>Delete this request?</Text>
+            <Text style={styles.deleteModalBody}>
+              {`This will remove "${pendingDelete?.movieTitle ?? ''}" from the list. You cannot undo this.`}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalBtnGhost]}
+                onPress={() => !deleting && setPendingDelete(null)}
+                disabled={deleting}
+              >
+                <Text style={styles.deleteModalBtnGhostT}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalBtnDanger]}
+                onPress={confirmRemoveSuggestion}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteModalBtnDangerT}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -388,5 +433,38 @@ const styles = StyleSheet.create({
   voteBtnOff: { backgroundColor: '#333' },
   voteBtnT: { color: '#fff', fontWeight: '700', fontSize: 14 },
   dangerT: { color: '#c44', fontWeight: '600', fontSize: 14 },
+  deletePress: { paddingVertical: 8, paddingHorizontal: 4, justifyContent: 'center' },
+  deletePressPressed: { opacity: 0.75 },
+  deleteModalWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  deleteModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  deleteModalCard: {
+    backgroundColor: CARD,
+    borderRadius: 16,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  deleteModalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  deleteModalBody: { color: '#ccc', fontSize: 15, lineHeight: 22, marginBottom: 22 },
+  deleteModalActions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end' },
+  deleteModalBtn: {
+    minWidth: 108,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalBtnGhost: { backgroundColor: BG, borderWidth: 1, borderColor: BORDER },
+  deleteModalBtnGhostT: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  deleteModalBtnDanger: { backgroundColor: '#9a1f1f' },
+  deleteModalBtnDangerT: { color: '#fff', fontWeight: '700', fontSize: 15 },
   empty: { color: MUTED, textAlign: 'center', marginTop: 32, fontSize: 15 },
 });

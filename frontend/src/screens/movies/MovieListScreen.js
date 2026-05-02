@@ -5,6 +5,7 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   TextInput,
@@ -12,6 +13,7 @@ import {
   RefreshControl,
   Alert,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import api from '../../api/axios';
@@ -35,7 +37,8 @@ export default function MovieListScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
-  const [deletingId, setDeletingId] = useState(null);
+  const [pendingDeleteMovie, setPendingDeleteMovie] = useState(null);
+  const [deleteMovieSubmitting, setDeleteMovieSubmitting] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [renderSearchDropdown, setRenderSearchDropdown] = useState(false);
   const dropdownAnim = useRef(new Animated.Value(0)).current;
@@ -124,26 +127,20 @@ export default function MovieListScreen({ navigation }) {
     });
   }, [dropdownAnim, showSearchDropdown]);
 
-  const handleDeleteMovie = movieId => {
-    Alert.alert('Delete Movie', 'Are you sure you want to delete this movie?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setDeletingId(movieId);
-            await api.delete(`/movies/${movieId}`);
-            setMovies(prev => prev.filter(movie => movie._id !== movieId));
-            Alert.alert('Success', 'Movie deleted successfully');
-          } catch (err) {
-            Alert.alert('Delete Failed', err.response?.data?.message || 'Unable to delete movie');
-          } finally {
-            setDeletingId(null);
-          }
-        },
-      },
-    ]);
+  const confirmDeleteMovie = async () => {
+    if (!pendingDeleteMovie?._id) return;
+    const id = pendingDeleteMovie._id;
+    try {
+      setDeleteMovieSubmitting(true);
+      await api.delete(`/movies/${id}`);
+      setMovies(prev => prev.filter(movie => movie._id !== id));
+      setPendingDeleteMovie(null);
+      Alert.alert('Success', 'Movie deleted successfully');
+    } catch (err) {
+      Alert.alert('Delete Failed', err.response?.data?.message || 'Unable to delete movie');
+    } finally {
+      setDeleteMovieSubmitting(false);
+    }
   };
 
   const renderPosterCard = ({ item }) => (
@@ -206,17 +203,17 @@ export default function MovieListScreen({ navigation }) {
             </TouchableOpacity>
           )}
           {isAdmin && (
-            <TouchableOpacity
-              style={[styles.inlineAction, styles.deleteAction]}
-              onPress={() => handleDeleteMovie(item._id)}
-              disabled={deletingId === item._id}
+            <Pressable
+              style={({ pressed }) => [
+                styles.inlineAction,
+                styles.deleteAction,
+                pressed && styles.inlineActionPressed,
+              ]}
+              onPress={() => setPendingDeleteMovie(item)}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
             >
-              {deletingId === item._id ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.inlineActionText}>Delete</Text>
-              )}
-            </TouchableOpacity>
+              <Text style={styles.inlineActionText}>Delete</Text>
+            </Pressable>
           )}
         </View>
       </View>
@@ -224,27 +221,34 @@ export default function MovieListScreen({ navigation }) {
   );
 
   const renderAdminMovieRow = ({ item }) => (
-    <TouchableOpacity
-      style={styles.popularRow}
-      activeOpacity={0.85}
-      delayPressIn={70}
-      onPress={() => navigation.navigate('MovieDetail', { movieId: item._id })}
-    >
-      {item.posterUrl ? (
-        <Image source={{ uri: item.posterUrl }} style={styles.popularPoster} />
-      ) : (
-        <View style={styles.popularPosterFallback}>
-          <Text style={styles.posterFallbackEmoji}>🎬</Text>
-        </View>
-      )}
+    <View style={styles.popularRow}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        delayPressIn={70}
+        onPress={() => navigation.navigate('MovieDetail', { movieId: item._id })}
+      >
+        {item.posterUrl ? (
+          <Image source={{ uri: item.posterUrl }} style={styles.popularPoster} />
+        ) : (
+          <View style={styles.popularPosterFallback}>
+            <Text style={styles.posterFallbackEmoji}>🎬</Text>
+          </View>
+        )}
+      </TouchableOpacity>
 
       <View style={styles.popularInfo}>
-        <Text style={styles.popularTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.popularMeta} numberOfLines={1}>
-          {item.genre} • {item.duration} min
-        </Text>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          delayPressIn={70}
+          onPress={() => navigation.navigate('MovieDetail', { movieId: item._id })}
+        >
+          <Text style={styles.popularTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+          <Text style={styles.popularMeta} numberOfLines={1}>
+            {item.genre} • {item.duration} min
+          </Text>
+        </TouchableOpacity>
         <View style={styles.badgeRow}>
           <View style={styles.statusBadge}>
             <Text style={styles.statusBadgeText}>{item.status}</Text>
@@ -254,26 +258,27 @@ export default function MovieListScreen({ navigation }) {
               <Text style={styles.trendingBadgeText}>Trending</Text>
             </View>
           )}
-          <TouchableOpacity
-            style={styles.inlineAction}
+          <Pressable
+            style={({ pressed }) => [styles.inlineAction, pressed && styles.inlineActionPressed]}
             onPress={() => navigation.navigate('CreateMovie', { movie: item })}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
           >
             <Text style={styles.inlineActionText}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.inlineAction, styles.deleteAction]}
-            onPress={() => handleDeleteMovie(item._id)}
-            disabled={deletingId === item._id}
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.inlineAction,
+              styles.deleteAction,
+              pressed && styles.inlineActionPressed,
+            ]}
+            onPress={() => setPendingDeleteMovie(item)}
+            hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
           >
-            {deletingId === item._id ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.inlineActionText}>Delete</Text>
-            )}
-          </TouchableOpacity>
+            <Text style={styles.inlineActionText}>Delete</Text>
+          </Pressable>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
   if (loading) {
@@ -435,6 +440,46 @@ export default function MovieListScreen({ navigation }) {
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={pendingDeleteMovie != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleteMovieSubmitting && setPendingDeleteMovie(null)}
+      >
+        <View style={styles.deleteModalWrap}>
+          <Pressable
+            style={styles.deleteModalBackdrop}
+            onPress={() => !deleteMovieSubmitting && setPendingDeleteMovie(null)}
+          />
+          <View style={styles.deleteModalCard}>
+            <Text style={styles.deleteModalTitle}>Delete this movie?</Text>
+            <Text style={styles.deleteModalBody}>
+              {`"${pendingDeleteMovie?.title ?? ''}" will be removed from the catalog. Showtimes and related data may be affected. This cannot be undone.`}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalBtnGhost]}
+                onPress={() => !deleteMovieSubmitting && setPendingDeleteMovie(null)}
+                disabled={deleteMovieSubmitting}
+              >
+                <Text style={styles.deleteModalBtnGhostT}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalBtnDanger]}
+                onPress={confirmDeleteMovie}
+                disabled={deleteMovieSubmitting}
+              >
+                {deleteMovieSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteModalBtnDangerT}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -607,6 +652,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteAction: { backgroundColor: '#6d171c' },
+  inlineActionPressed: { opacity: 0.82 },
   inlineActionText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  deleteModalWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  deleteModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  deleteModalCard: {
+    backgroundColor: '#1c1c1c',
+    borderRadius: 16,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  deleteModalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  deleteModalBody: { color: '#ccc', fontSize: 15, lineHeight: 22, marginBottom: 22 },
+  deleteModalActions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end' },
+  deleteModalBtn: {
+    minWidth: 108,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalBtnGhost: { backgroundColor: '#0f0f0f', borderWidth: 1, borderColor: '#2a2a2a' },
+  deleteModalBtnGhostT: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  deleteModalBtnDanger: { backgroundColor: '#9a1f1f' },
+  deleteModalBtnDangerT: { color: '#fff', fontWeight: '700', fontSize: 15 },
   empty: { color: '#999', marginTop: 10, fontSize: 14 },
 });
