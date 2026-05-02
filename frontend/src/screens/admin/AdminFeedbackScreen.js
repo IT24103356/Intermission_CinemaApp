@@ -94,8 +94,9 @@ export default function AdminFeedbackScreen({ navigation }) {
   );
 
   const openReplyModal = item => {
+    if (item?.adminReply?.message?.trim()) return;
     setActiveFeedback(item);
-    setReplyText(item?.adminReply?.message || '');
+    setReplyText('');
     setModalVisible(true);
   };
 
@@ -287,11 +288,13 @@ export default function AdminFeedbackScreen({ navigation }) {
             )}
 
             <View style={styles.actionRight}>
-              <TouchableOpacity style={styles.replyButton} onPress={() => openReplyModal(item)}>
-                <Text style={styles.replyButtonText}>
-                  {item.adminReply?.message ? 'Edit Reply' : 'Reply'}
-                </Text>
-              </TouchableOpacity>
+              {item.adminReply?.message?.trim() ? (
+                <Text style={styles.repliedPill}>Replied</Text>
+              ) : (
+                <TouchableOpacity style={styles.replyButton} onPress={() => openReplyModal(item)}>
+                  <Text style={styles.replyButtonText}>Reply</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -442,6 +445,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
   },
   replyButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  repliedPill: {
+    color: '#1D9E75',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1D9E75',
+    overflow: 'hidden',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

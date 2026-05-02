@@ -178,6 +178,10 @@ exports.replyToFeedback = async (req, res) => {
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
 
+    if (feedback.adminReply?.message?.trim()) {
+      return res.status(400).json({ message: 'A reply was already posted and cannot be changed' });
+    }
+
     feedback.adminReply = {
       message: message.trim(),
       repliedBy: req.user.id,

@@ -150,6 +150,7 @@ export default function MovieListScreen({ navigation }) {
     <TouchableOpacity
       style={styles.posterCard}
       activeOpacity={0.85}
+      delayPressIn={70}
       onPress={() => navigation.navigate('MovieDetail', { movieId: item._id })}
     >
       {item.posterUrl ? (
@@ -169,6 +170,7 @@ export default function MovieListScreen({ navigation }) {
     <TouchableOpacity
       style={styles.popularRow}
       activeOpacity={0.85}
+      delayPressIn={70}
       onPress={() => navigation.navigate('MovieDetail', { movieId: item._id })}
     >
       {item.posterUrl ? (
@@ -225,6 +227,7 @@ export default function MovieListScreen({ navigation }) {
     <TouchableOpacity
       style={styles.popularRow}
       activeOpacity={0.85}
+      delayPressIn={70}
       onPress={() => navigation.navigate('MovieDetail', { movieId: item._id })}
     >
       {item.posterUrl ? (
@@ -285,6 +288,8 @@ export default function MovieListScreen({ navigation }) {
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, { paddingBottom: 28 + tabBarHeight }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e50914" />
@@ -361,29 +366,30 @@ export default function MovieListScreen({ navigation }) {
             <View style={[styles.sectionHeader, styles.adminSectionHeader]}>
               <Text style={[styles.sectionTitle, styles.adminSectionTitle]}>All Movies</Text>
             </View>
-            <FlatList
-              data={adminMovies}
-              keyExtractor={item => item._id}
-              renderItem={renderAdminMovieRow}
-              scrollEnabled={false}
-              ListEmptyComponent={<Text style={styles.empty}>No movies found</Text>}
-            />
+            {adminMovies.length === 0 ? (
+              <Text style={styles.empty}>No movies found</Text>
+            ) : (
+              adminMovies.map(item => <View key={item._id}>{renderAdminMovieRow({ item })}</View>)
+            )}
           </>
         ) : (
           <>
             <Text style={styles.sectionTitle}>Categories</Text>
             <FlatList
               horizontal
+              nestedScrollEnabled
               showsHorizontalScrollIndicator={false}
               data={categories}
               keyExtractor={item => item.id}
               contentContainerStyle={styles.categoryList}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => {
                 const active = activeCategory === item.id;
                 return (
                   <TouchableOpacity
                     style={[styles.categoryChip, active && styles.categoryChipActive]}
                     onPress={() => setActiveCategory(item.id)}
+                    delayPressIn={80}
                   >
                     <Text style={styles.categoryIcon}>{item.icon}</Text>
                     <Text style={[styles.categoryLabel, active && styles.categoryLabelActive]}>
@@ -403,11 +409,13 @@ export default function MovieListScreen({ navigation }) {
             {nowInCinemas.length ? (
               <FlatList
                 horizontal
+                nestedScrollEnabled
                 showsHorizontalScrollIndicator={false}
                 data={nowInCinemas}
                 keyExtractor={item => item._id}
                 renderItem={renderPosterCard}
                 contentContainerStyle={styles.posterRail}
+                keyboardShouldPersistTaps="handled"
               />
             ) : (
               <Text style={styles.empty}>No current showings found</Text>
@@ -419,13 +427,11 @@ export default function MovieListScreen({ navigation }) {
                 <Text style={styles.seeAll}>See all</Text>
               </TouchableOpacity>
             </View>
-            <FlatList
-              data={popularMovies}
-              keyExtractor={item => item._id}
-              renderItem={renderPopularRow}
-              scrollEnabled={false}
-              ListEmptyComponent={<Text style={styles.empty}>No movies found</Text>}
-            />
+            {popularMovies.length === 0 ? (
+              <Text style={styles.empty}>No movies found</Text>
+            ) : (
+              popularMovies.map(item => <View key={item._id}>{renderPopularRow({ item })}</View>)
+            )}
           </>
         )}
       </ScrollView>
