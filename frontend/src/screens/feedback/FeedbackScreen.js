@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
+import { buildWatchedMovieRowsFromBookings } from '../../utils/watchedFromBookings';
 
 const BG = '#0f0f0f';
 const CARD = '#1c1c1c';
@@ -59,8 +60,7 @@ export default function FeedbackScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const tabBarHeight = useBottomTabBarHeight();
 
-  /** Movies the user may review (confirmed booking + screening ended) */
-  const [watchedRows, setWatchedRows] = useState([]);
+  const [myBookings, setMyBookings] = useState([]);
   const [myFeedback, setMyFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,10 +74,6 @@ export default function FeedbackScreen({ navigation }) {
   const [pickMovie, setPickMovie] = useState(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-
-  const reviewedIds = new Set(
-    myFeedback.map(f => String(f.movie?._id || f.movie || ''))
-  );
 
   const reviewFilterOptions = useMemo(() => {
     const map = new Map();
@@ -98,16 +94,31 @@ export default function FeedbackScreen({ navigation }) {
     );
   }, [myFeedback, reviewFilterMovieId]);
 
+  const watchedRows = useMemo(
+    () => buildWatchedMovieRowsFromBookings(myBookings),
+    [myBookings]
+  );
+
+  const watchedMovies = useMemo(
+    () => watchedRows.map((r) => r.movie).filter(Boolean),
+    [watchedRows]
+  );
+
+  const toRate = useMemo(() => {
+    const reviewed = new Set(myFeedback.map((f) => String(f.movie?._id || f.movie || '')));
+    return watchedMovies.filter((m) => !reviewed.has(String(m._id)));
+  }, [watchedMovies, myFeedback]);
+
   const load = useCallback(async () => {
     try {
-      const [wRes, fRes] = await Promise.allSettled([
-        user ? api.get('/bookings/my/watched-movies') : Promise.resolve({ data: [] }),
+      const [bRes, fRes] = await Promise.allSettled([
+        user ? api.get('/bookings/my') : Promise.resolve({ data: [] }),
         user ? api.get('/feedback/my') : Promise.resolve({ data: [] }),
       ]);
-      if (wRes.status === 'fulfilled' && Array.isArray(wRes.value.data)) {
-        setWatchedRows(wRes.value.data);
+      if (bRes.status === 'fulfilled' && Array.isArray(bRes.value.data)) {
+        setMyBookings(bRes.value.data);
       } else {
-        setWatchedRows([]);
+        setMyBookings([]);
       }
       if (fRes.status === 'fulfilled' && Array.isArray(fRes.value.data)) {
         setMyFeedback(fRes.value.data);
@@ -115,7 +126,7 @@ export default function FeedbackScreen({ navigation }) {
         setMyFeedback([]);
       }
     } catch {
-      setWatchedRows([]);
+      setMyBookings([]);
       setMyFeedback([]);
     } finally {
       setLoading(false);
@@ -241,13 +252,6 @@ export default function FeedbackScreen({ navigation }) {
       </View>
     );
   }
-
-  const watchedMovies = useMemo(
-    () => watchedRows.map((r) => r.movie).filter(Boolean),
-    [watchedRows]
-  );
-
-  const toRate = watchedMovies.filter((m) => !reviewedIds.has(String(m._id)));
 
   return (
     <ScrollView
@@ -390,7 +394,7 @@ export default function FeedbackScreen({ navigation }) {
             ) : (
               <FlatList
                 data={toRate}
-                keyExtractor={m => m._id}
+                keyExtractor={(m, i) => String(m?._id ?? `movie-${i}`)}
                 style={styles.modalList}
                 renderItem={({ item }) => (
                   <TouchableOpacity

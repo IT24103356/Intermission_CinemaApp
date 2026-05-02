@@ -14,7 +14,8 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
-import { isShowEnded, showEndMsUtc } from '../../utils/showtimeTiming';
+import { isShowEnded } from '../../utils/showtimeTiming';
+import { buildWatchedMovieRowsFromBookings } from '../../utils/watchedFromBookings';
 
 const TABS = [
   { id: 'upcoming', label: 'Upcoming' },
@@ -27,35 +28,6 @@ const formatWhen = (showtime) => {
   const d = new Date(showtime.date);
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 };
-
-function buildWatchedRows(bookings) {
-  const best = new Map();
-  for (const b of bookings) {
-    if (b.status !== 'confirmed') continue;
-    const st = b.showtime;
-    const m = st?.movie;
-    if (!st || !m) continue;
-    if (!isShowEnded(st, m.duration)) continue;
-    const id = String(m._id);
-    const endMs = showEndMsUtc(st, m.duration);
-    const prev = best.get(id);
-    if (!prev || endMs > prev.endMs) {
-      best.set(id, { movie: m, lastEndedAt: endMs });
-    }
-  }
-  return Array.from(best.values())
-    .sort((a, b) => b.lastEndedAt - a.lastEndedAt)
-    .map(({ movie, lastEndedAt }) => ({
-      movie,
-      lastEndedLabel: new Date(lastEndedAt).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      }),
-    }));
-}
 
 export default function MyBookingsScreen({ navigation }) {
   const { user } = useContext(AuthContext);
@@ -119,7 +91,7 @@ export default function MyBookingsScreen({ navigation }) {
     [bookings]
   );
 
-  const watchedRows = useMemo(() => buildWatchedRows(bookings), [bookings]);
+  const watchedRows = useMemo(() => buildWatchedMovieRowsFromBookings(bookings), [bookings]);
 
   const listData = tab === 'upcoming' ? upcoming : tab === 'archive' ? archive : watchedRows;
 
@@ -222,7 +194,7 @@ export default function MyBookingsScreen({ navigation }) {
                 <Text style={styles.movieName} numberOfLines={2}>
                   {item.movie.title}
                 </Text>
-                <Text style={styles.line}>Screening ended {item.lastEndedLabel}</Text>
+                <Text style={styles.line}>Screening ended {item.lastEndedLabel || '—'}</Text>
                 <TouchableOpacity
                   style={styles.feedbackLink}
                   onPress={() => navigation.navigate('Feedback')}
