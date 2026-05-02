@@ -7,7 +7,40 @@ connectDB();
 
 const app = express();
 
-app.use(cors());
+/** Netlify + local dev; add CORS_ORIGINS=https://other.com,https://x.com for more */
+function corsOrigin(origin, callback) {
+  if (!origin) return callback(null, true);
+  try {
+    const { hostname } = new URL(origin);
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return callback(null, true);
+    }
+    if (hostname.endsWith('.netlify.app')) {
+      return callback(null, true);
+    }
+    // Expo / LAN (device on same network)
+    if (/^192\.168\.\d+\.\d+$/.test(hostname) || /^10\.\d+\.\d+\.\d+$/.test(hostname)) {
+      return callback(null, true);
+    }
+  } catch {
+    return callback(null, false);
+  }
+  const extras = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (extras.includes(origin)) return callback(null, true);
+  return callback(null, false);
+}
+
+app.use(
+  cors({
+    origin: corsOrigin,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
+  })
+);
 app.use(express.json());
 
 // Routes
