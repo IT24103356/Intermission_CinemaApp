@@ -1,15 +1,33 @@
-const Booking = require('../models/Booking');
+const Booking  = require('../models/Booking');
+const Showtime = require('../models/Showtime');
+const {
+  getConfirmedSeatsSoldCount,
+  remainingFromTotalAndSold,
+  withComputedAvailableOne,
+} = require('../utils/showtimeAvailability');
+
+async function enrichBookingShowtime(booking) {
+  if (!booking) return booking;
+  const o = booking.toObject ? booking.toObject() : { ...booking };
+  if (o.showtime) {
+    o.showtime = await withComputedAvailableOne(o.showtime);
+  }
+  return o;
+}
 
 // GET all bookings (admin)
 exports.getBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
-      .populate('user', 'name email')
+      .populate('user',     'name email')
       .populate({
-        path: 'showtime',
-        populate: { path: 'movie', select: 'title genre' },
+        path:     'showtime',
+        populate: { path: 'movie', select: 'title genre' }
       });
-    res.json(bookings);
+    const out = await Promise.all(
+      bookings.map(b => enrichBookingShowtime(b))
+    );
+    res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -19,13 +37,13 @@ exports.getBookings = async (req, res) => {
 exports.getBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id)
-      .populate('user', 'name email')
+      .populate('user',     'name email')
       .populate({
-        path: 'showtime',
-        populate: { path: 'movie', select: 'title genre' },
+        path:     'showtime',
+        populate: { path: 'movie', select: 'title genre' }
       });
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
-    res.json(booking);
+    res.json(await enrichBookingShowtime(booking));
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -36,10 +54,13 @@ exports.getMyBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user.id })
       .populate({
-        path: 'showtime',
-        populate: { path: 'movie', select: 'title genre posterUrl' },
+        path:     'showtime',
+        populate: { path: 'movie', select: 'title genre posterUrl' }
       });
-    res.json(bookings);
+    const out = await Promise.all(
+      bookings.map(b => enrichBookingShowtime(b))
+    );
+    res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -50,16 +71,16 @@ exports.getTakenSeatsForShowtime = async (req, res) => {
   try {
     const bookings = await Booking.find({
       showtime: req.params.showtimeId,
-      status: 'confirmed',
+      status:   'confirmed',
     }).select('seats');
-    const takenSeats = bookings.flatMap((b) => b.seats);
+    const takenSeats = bookings.flatMap(b => b.seats);
     res.json({ takenSeats });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
-// POST create booking
+// POST create booking (with seat deduction)
 exports.createBooking = async (req, res) => {
   try {
     const { showtimeId, seats } = req.body;
@@ -68,31 +89,47 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ message: 'Select at least one seat' });
     }
 
-    // Check seats are not already taken
-    const existingBookings = await Booking.find({
-      showtime: showtimeId,
-      status: 'confirmed',
-    });
-    const takenSeats = existingBookings.flatMap((b) => b.seats);
-    const conflict = seats.filter((s) => takenSeats.includes(s));
-    if (conflict.length > 0) {
+    // Step 1 — find the showtime
+    const showtime = await Showtime.findById(showtimeId);
+    if (!showtime) return res.status(404).json({ message: 'Showtime not found' });
+
+    // Step 2 — remaining = total capacity minus already sold (bookings are source of truth)
+    const sold   = await getConfirmedSeatsSoldCount(showtime._id);
+    const remaining = remainingFromTotalAndSold(showtime.totalSeats, sold);
+    if (remaining < seats.length) {
       return res.status(400).json({
-        message: `Seats already taken: ${conflict.join(', ')}`,
+        message: `Only ${remaining} seat(s) available`
       });
     }
 
-    // Calculate total price (example: $10 per seat)
-    const pricePerSeat = 10;
-    const totalPrice = seats.length * pricePerSeat;
-
-    // Create the booking
-    const booking = await Booking.create({
-      user: req.user.id,
+    // Step 3 — check seats are not already taken
+    const existingBookings = await Booking.find({
       showtime: showtimeId,
+      status:   'confirmed'
+    });
+    const takenSeats = existingBookings.flatMap(b => b.seats);
+    const conflict   = seats.filter(s => takenSeats.includes(s));
+    if (conflict.length > 0) {
+      return res.status(400).json({
+        message: `Seats already taken: ${conflict.join(', ')}`
+      });
+    }
+
+    // Step 4 — calculate total price (example: $10 per seat)
+    const pricePerSeat = 10;
+    const totalPrice   = seats.length * pricePerSeat;
+
+    // Step 5 — create the booking
+    const booking = await Booking.create({
+      user:       req.user.id,
+      showtime:   showtime._id,
       seats,
       totalPrice,
-      status: 'confirmed',
+      status:     'confirmed'
     });
+
+    // availableSeats is derived in API responses from totalSeats & bookings (no counter drift)
+
     res.status(201).json(booking);
   } catch (err) {
     res.status(500).json({ message: err.message });
