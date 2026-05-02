@@ -2,27 +2,65 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+/** Trim, Unicode NFC when available, then lowercasing for comparisons. */
+function normalizeEmail(email) {
+  let s = String(email || '').trim().toLowerCase();
+  if (typeof s.normalize === 'function') {
+    try {
+      s = s.normalize('NFC');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  return s;
+}
+
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Case-insensitive exact email match (handles legacy mixed-case rows without relying on collation). */
-function emailMatchFilter(normalizedLowerEmail) {
-  return {
-    email: new RegExp(`^${escapeRegex(normalizedLowerEmail)}$`, 'i'),
-  };
+/**
+ * Plain user doc from Mongo (not a Mongoose model) so `password` is always the
+ * stored hash for bcrypt — avoids hydrate/cast edge cases.
+ * Tries: exact email → $expr lower+trim match → anchored case-insensitive regex.
+ */
+async function findUserRawByEmailCaseInsensitive(normalizedLowerEmail) {
+  if (!normalizedLowerEmail) return null;
+  const coll = User.collection;
+
+  let doc = await coll.findOne({ email: normalizedLowerEmail });
+  if (doc) return doc;
+
+  doc = await coll.findOne({
+    $expr: {
+      $eq: [
+        {
+          $toLower: {
+            $trim: { input: { $ifNull: ['$email', ''] } },
+          },
+        },
+        normalizedLowerEmail,
+      ],
+    },
+  });
+  if (doc) return doc;
+
+  doc = await coll.findOne({
+    email: { $regex: new RegExp(`^${escapeRegex(normalizedLowerEmail)}$`, 'i') },
+  });
+  return doc || null;
 }
 
 // REGISTER
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
-    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     if (!normalizedEmail) {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const existing = await User.findOne(emailMatchFilter(normalizedEmail));
+    const existing = await findUserRawByEmailCaseInsensitive(normalizedEmail);
     if (existing) return res.status(400).json({ message: 'Email already registered' });
 
     // Hash password
@@ -56,24 +94,41 @@ exports.register = async (req, res) => {
 // LOGIN
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const emailRaw = req.body?.email;
+    const password = req.body?.password;
+    const normalizedEmail = normalizeEmail(emailRaw);
 
-    const user = await User.findOne(emailMatchFilter(normalizedEmail));
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!normalizedEmail || password == null || password === '') {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
 
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
+    const doc = await findUserRawByEmailCaseInsensitive(normalizedEmail);
+    if (!doc || doc.password == null) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    let hash = doc.password;
+    if (Buffer.isBuffer(hash)) {
+      hash = hash.toString('utf8');
+    } else if (hash != null && typeof hash !== 'string' && typeof hash.toString === 'function') {
+      hash = hash.toString('utf8');
+    } else {
+      hash = String(hash);
+    }
+    const isMatch = await bcrypt.compare(password, hash);
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-    // Generate token
+    const id = doc._id;
+    const role = doc.role || 'user';
+    const name = doc.name;
+
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id, role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.status(200).json({ token, user: { id: user._id, name: user.name, role: user.role } });
+    res.status(200).json({ token, user: { id, name, role } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

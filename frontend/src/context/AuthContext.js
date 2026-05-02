@@ -4,6 +4,18 @@ import api from '../api/axios';
 
 export const AuthContext = createContext();
 
+function normalizeEmail(email) {
+  let s = String(email || '').trim().toLowerCase();
+  if (typeof s.normalize === 'function') {
+    try {
+      s = s.normalize('NFC');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  return s;
+}
+
 export const AuthProvider = ({ children }) => {
   const [user,    setUser]    = useState(null);
   const [token,   setToken]   = useState(null);
@@ -31,7 +43,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    const res = await api.post('/auth/login', { email, password });
+    const res = await api.post('/auth/login', {
+      email: normalizeEmail(email),
+      password,
+    });
     await AsyncStorage.setItem('token', res.data.token);
     await AsyncStorage.setItem('user',  JSON.stringify(res.data.user));
     setToken(res.data.token);
@@ -39,7 +54,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (name, email, password) => {
-    const res = await api.post('/auth/register', { name, email, password });
+    const res = await api.post('/auth/register', {
+      name,
+      email: normalizeEmail(email),
+      password,
+    });
     await AsyncStorage.setItem('token', res.data.token);
     await AsyncStorage.setItem('user',  JSON.stringify(res.data.user));
     setToken(res.data.token);
