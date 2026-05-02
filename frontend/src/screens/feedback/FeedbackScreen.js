@@ -56,6 +56,20 @@ function StarDisplay({ value, size = 20 }) {
   );
 }
 
+function AdminReplyMetaLine({ adminReply }) {
+  const name = adminReply?.repliedBy?.name?.trim();
+  const when = adminReply?.repliedAt
+    ? new Date(adminReply.repliedAt).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '';
+  const meta = [name, when].filter(Boolean).join(' · ');
+  if (!meta) return null;
+  return <Text style={styles.adminReplyMeta}>{meta}</Text>;
+}
+
 export default function FeedbackScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const tabBarHeight = useBottomTabBarHeight();
@@ -65,10 +79,7 @@ export default function FeedbackScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [movieModal, setMovieModal] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [editModal, setEditModal] = useState(false);
-  const [editRating, setEditRating] = useState(3);
-  const [editComment, setEditComment] = useState('');
+  const [filterModal, setFilterModal] = useState(false);
   const [reviewFilterMovieId, setReviewFilterMovieId] = useState('all');
 
   const [pickMovie, setPickMovie] = useState(null);
@@ -84,8 +95,13 @@ export default function FeedbackScreen({ navigation }) {
         map.set(id, { id, title });
       }
     });
-    return [{ id: 'all', title: 'All movies' }, ...Array.from(map.values())];
+    return [{ id: 'all', title: 'All reviews' }, ...Array.from(map.values())];
   }, [myFeedback]);
+
+  const selectedFilterLabel = useMemo(() => {
+    const opt = reviewFilterOptions.find((o) => o.id === reviewFilterMovieId);
+    return opt?.title ?? 'All reviews';
+  }, [reviewFilterOptions, reviewFilterMovieId]);
 
   const filteredMyFeedback = useMemo(() => {
     if (reviewFilterMovieId === 'all') return myFeedback;
@@ -143,54 +159,6 @@ export default function FeedbackScreen({ navigation }) {
       load();
     }, [user, load])
   );
-
-  const openEdit = item => {
-    setEditId(item._id);
-    setEditRating(item.rating || 3);
-    setEditComment(item.comment || '');
-    setEditModal(true);
-  };
-
-  const saveEdit = async () => {
-    if (!editId) return;
-    if (editRating < 1 || editRating > 5) {
-      Alert.alert('Rating', 'Pick a star rating 1–5');
-      return;
-    }
-    try {
-      setSaving(true);
-      await api.put(`/feedback/${editId}`, {
-        rating: editRating,
-        comment: editComment.trim() || undefined,
-      });
-      setEditModal(false);
-      setEditId(null);
-      await load();
-      Alert.alert('Updated', 'Your review was updated.');
-    } catch (err) {
-      Alert.alert('Error', err.response?.data?.message || 'Could not update');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeFeedback = id => {
-    Alert.alert('Remove review', 'Delete this review?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.delete(`/feedback/${id}`);
-            await load();
-          } catch (err) {
-            Alert.alert('Error', err.response?.data?.message || 'Delete failed');
-          }
-        },
-      },
-    ]);
-  };
 
   const submit = async () => {
     if (!user) {
@@ -322,26 +290,17 @@ export default function FeedbackScreen({ navigation }) {
         <Text style={styles.mutedP}>You haven’t posted a review yet.</Text>
       ) : (
         <>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
+          <Text style={styles.filterLabel}>Filter by movie</Text>
+          <TouchableOpacity
+            style={styles.filterSelect}
+            onPress={() => setFilterModal(true)}
+            activeOpacity={0.85}
           >
-            {reviewFilterOptions.map(opt => {
-              const active = reviewFilterMovieId === opt.id;
-              return (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setReviewFilterMovieId(opt.id)}
-                >
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                    {opt.title}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+            <Text style={styles.filterSelectText} numberOfLines={1}>
+              {selectedFilterLabel}
+            </Text>
+            <Text style={styles.filterSelectChevron}>▾</Text>
+          </TouchableOpacity>
 
           {filteredMyFeedback.length === 0 ? (
             <Text style={styles.mutedP}>No reviews for the selected movie.</Text>
@@ -366,20 +325,53 @@ export default function FeedbackScreen({ navigation }) {
                   {f.comment ? <Text style={styles.reviewComment}>{f.comment}</Text> : null}
                 </View>
               </View>
-              <View style={styles.reviewActions}>
-                <TouchableOpacity onPress={() => openEdit(f)}>
-                  <Text style={styles.link}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => removeFeedback(f._id)}>
-                  <Text style={styles.dangerLink}>Delete</Text>
-                </TouchableOpacity>
-              </View>
+              {f.adminReply?.message?.trim() ? (
+                <View style={styles.adminReplyBox}>
+                  <Text style={styles.adminReplyLabel}>Staff reply</Text>
+                  <Text style={styles.adminReplyText}>{f.adminReply.message.trim()}</Text>
+                  <AdminReplyMetaLine adminReply={f.adminReply} />
+                </View>
+              ) : null}
             </View>
           );
             })
           )}
         </>
       )}
+
+      <Modal visible={filterModal} animationType="fade" transparent onRequestClose={() => setFilterModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalH}>Filter reviews</Text>
+            <FlatList
+              data={reviewFilterOptions}
+              keyExtractor={(opt) => String(opt.id)}
+              style={styles.modalList}
+              renderItem={({ item: opt }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.modalRow,
+                    styles.filterPickerRow,
+                    reviewFilterMovieId === opt.id && styles.modalRowSelected,
+                  ]}
+                  onPress={() => {
+                    setReviewFilterMovieId(opt.id);
+                    setFilterModal(false);
+                  }}
+                >
+                  <Text style={styles.modalRowT} numberOfLines={2}>
+                    {opt.title}
+                  </Text>
+                  {reviewFilterMovieId === opt.id ? <Text style={styles.modalRowCheck}>✓</Text> : null}
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity onPress={() => setFilterModal(false)} style={styles.modalClose}>
+              <Text style={styles.link}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={movieModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -412,31 +404,6 @@ export default function FeedbackScreen({ navigation }) {
             <TouchableOpacity onPress={() => setMovieModal(false)} style={styles.modalClose}>
               <Text style={styles.link}>Close</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={editModal} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.editBox}>
-            <Text style={styles.modalH}>Edit review</Text>
-            <Stars value={editRating} onChange={setEditRating} />
-            <TextInput
-              style={[styles.textArea, { marginTop: 12 }]}
-              placeholder="Comment"
-              placeholderTextColor="#666"
-              value={editComment}
-              onChangeText={setEditComment}
-              multiline
-            />
-            <View style={styles.editRow}>
-              <TouchableOpacity onPress={() => setEditModal(false)}>
-                <Text style={styles.mutedP}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={saveEdit} disabled={saving} style={styles.saveMini}>
-                {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveMiniT}>Save</Text>}
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
@@ -520,18 +487,25 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.7 },
   hint: { color: MUTED, fontSize: 13, marginTop: 12, textAlign: 'center' },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '600', marginBottom: 12 },
-  filterRow: { paddingBottom: 10, gap: 8 },
-  filterChip: {
+  filterLabel: { color: MUTED, fontSize: 12, marginBottom: 8, fontWeight: '600' },
+  filterSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    backgroundColor: BG,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 14,
     borderWidth: 1,
     borderColor: BORDER,
-    backgroundColor: CARD,
-    borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
   },
-  filterChipActive: { borderColor: ACCENT, backgroundColor: 'rgba(229,9,20,0.12)' },
-  filterChipText: { color: MUTED, fontSize: 13, fontWeight: '600' },
-  filterChipTextActive: { color: ACCENT },
+  filterSelectText: { flex: 1, color: '#fff', fontSize: 16 },
+  filterSelectChevron: { color: MUTED, fontSize: 14, fontWeight: '700' },
+  filterPickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalRowSelected: { backgroundColor: 'rgba(229,9,20,0.08)' },
+  modalRowCheck: { color: ACCENT, fontSize: 16, fontWeight: '700', paddingLeft: 8 },
   mutedP: { color: MUTED, fontSize: 15, lineHeight: 22 },
   reviewCard: {
     backgroundColor: CARD,
@@ -548,9 +522,18 @@ const styles = StyleSheet.create({
   reviewBody: { flex: 1, minWidth: 0 },
   reviewTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
   reviewComment: { color: MUTED, fontSize: 14, marginTop: 6 },
-  reviewActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 20, marginTop: 12 },
+  adminReplyBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: '#141820',
+    borderLeftWidth: 3,
+    borderLeftColor: ACCENT,
+  },
+  adminReplyLabel: { color: ACCENT, fontSize: 11, fontWeight: '700', letterSpacing: 0.6, marginBottom: 6 },
+  adminReplyText: { color: '#e8e8e8', fontSize: 14, lineHeight: 20 },
+  adminReplyMeta: { color: '#666', fontSize: 12, marginTop: 8 },
   link: { color: ACCENT, fontSize: 15, fontWeight: '600' },
-  dangerLink: { color: '#c44', fontSize: 15, fontWeight: '600' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
@@ -561,10 +544,6 @@ const styles = StyleSheet.create({
   modalH: { color: '#fff', fontSize: 18, fontWeight: '600', marginBottom: 8, paddingHorizontal: 4 },
   modalList: { maxHeight: 360 },
   modalRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER, paddingHorizontal: 8 },
-  modalRowT: { color: '#fff', fontSize: 16 },
+  modalRowT: { color: '#fff', fontSize: 16, flex: 1, paddingRight: 8 },
   modalClose: { padding: 16, alignItems: 'center' },
-  editBox: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: BORDER },
-  editRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
-  saveMini: { backgroundColor: ACCENT, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 },
-  saveMiniT: { color: '#fff', fontWeight: '700' },
 });

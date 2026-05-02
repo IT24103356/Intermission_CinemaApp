@@ -24,9 +24,12 @@ function toLocalDateString(d) {
   return `${y}-${m}-${day}`;
 }
 
-function parseFormDate(yyyyMmDd) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyyMmDd.trim())) return null;
-  return new Date(`${yyyyMmDd.trim()}T12:00:00`);
+/** Store show date as UTC noon on the chosen calendar day so listing by YYYY-MM-DD always matches. */
+function dateIsoUtcNoonFromYmd(yyyyMmDd) {
+  const s = yyyyMmDd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, mo, d] = s.split('-').map(Number);
+  return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0, 0)).toISOString();
 }
 
 export default function AdminShowtimesScreen({ navigation }) {
@@ -123,7 +126,10 @@ export default function AdminShowtimesScreen({ navigation }) {
     );
   };
 
-  const selectedMovie = movies.find(m => m._id === movieId);
+  const selectedMovie = useMemo(
+    () => movies.find((m) => String(m._id) === String(movieId)),
+    [movies, movieId]
+  );
 
   const calendarTheme = useMemo(
     () => ({
@@ -158,8 +164,8 @@ export default function AdminShowtimesScreen({ navigation }) {
 
   const handleSave = async () => {
     if (!isAdmin) return;
-    const date = parseFormDate(dateStr);
-    if (!date) {
+    const dateIso = dateIsoUtcNoonFromYmd(dateStr);
+    if (!dateIso) {
       Alert.alert('Invalid date', 'Use YYYY-MM-DD (e.g. 2026-04-28).');
       return;
     }
@@ -203,8 +209,8 @@ export default function AdminShowtimesScreen({ navigation }) {
     }
 
     const body = {
-      movie: movieId,
-      date: date.toISOString(),
+      movie: String(movieId),
+      date: dateIso,
       time: t,
       screenNumber: screen,
       totalSeats: total,
@@ -432,7 +438,7 @@ export default function AdminShowtimesScreen({ navigation }) {
                 <TouchableOpacity
                   style={styles.modalRow}
                   onPress={() => {
-                    setMovieId(item._id);
+                    setMovieId(String(item._id));
                     setMovieModal(false);
                   }}
                 >

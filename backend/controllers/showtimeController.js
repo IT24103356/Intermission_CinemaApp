@@ -38,12 +38,19 @@ exports.getShowtimesByMovie = async (req, res) => {
   }
 };
 
-// GET showtimes by date
+// GET showtimes by date (YYYY-MM-DD interpreted as UTC calendar day — matches how clients store date)
 exports.getShowtimesByDate = async (req, res) => {
   try {
-    const start = new Date(req.params.date);
-    const end   = new Date(req.params.date);
-    end.setDate(end.getDate() + 1);
+    const raw = String(req.params.date || '').trim();
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) {
+      return res.status(400).json({ message: 'Invalid date; use YYYY-MM-DD' });
+    }
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const start = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
+    const end = new Date(Date.UTC(y, mo - 1, d + 1, 0, 0, 0, 0));
 
     const showtimes = await Showtime.find({
       date: { $gte: start, $lt: end }

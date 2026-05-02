@@ -22,8 +22,8 @@ router.get('/',        protect, adminOnly, getFeedbacks);
 router.get('/my',      protect, getMyFeedback);
 router.get('/:id',     protect, getFeedback);
 router.post('/',       protect, createFeedback);
-router.put('/:id',     protect, updateFeedback);
+router.put('/:id',       protect, adminOnly, updateFeedback);
 router.put('/:id/reply', protect, adminOnly, replyToFeedback);
-router.delete('/:id',  protect, deleteFeedback);
+router.delete('/:id',    protect, adminOnly, deleteFeedback);
 
 module.exports = router;

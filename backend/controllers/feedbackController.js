@@ -136,16 +136,11 @@ exports.createFeedback = async (req, res) => {
   }
 };
 
-// PUT update feedback
+// PUT update feedback (admin only — users cannot edit after submit)
 exports.updateFeedback = async (req, res) => {
   try {
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
-
-    // Make sure it belongs to the logged in user
-    if (feedback.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
 
     const updated = await Feedback.findByIdAndUpdate(
       req.params.id,
@@ -159,16 +154,11 @@ exports.updateFeedback = async (req, res) => {
   }
 };
 
-// DELETE feedback
+// DELETE feedback (admin only — users cannot remove their own reviews)
 exports.deleteFeedback = async (req, res) => {
   try {
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
-
-    // Allow owner or admin to delete
-    if (feedback.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
 
     await Feedback.findByIdAndDelete(req.params.id);
     res.json({ message: 'Feedback deleted successfully' });
