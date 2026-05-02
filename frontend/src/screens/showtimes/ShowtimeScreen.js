@@ -1,13 +1,24 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useContext, useLayoutEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../../api/axios';
+import { AuthContext } from '../../context/AuthContext';
 
 export default function ShowtimeScreen({ route, navigation }) {
+  const { user } = useContext(AuthContext);
+  const isAdmin = user?.role === 'admin';
+  const adminBounce = useRef(false);
   const { showtimeId, movieTitle } = route.params;
+
+  useLayoutEffect(() => {
+    if (isAdmin && !adminBounce.current) {
+      adminBounce.current = true;
+      navigation.goBack();
+    }
+  }, [isAdmin, navigation]);
 
   const [showtime, setShowtime] = useState(null);
   const [takenSeats, setTakenSeats] = useState([]);
@@ -32,8 +43,9 @@ export default function ShowtimeScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (isAdmin) return;
       fetchShowtime();
-    }, [fetchShowtime])
+    }, [fetchShowtime, isAdmin])
   );
 
   const formatDate = (dateStr) => {
@@ -41,6 +53,10 @@ export default function ShowtimeScreen({ route, navigation }) {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
   };
+
+  if (isAdmin) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -81,17 +97,18 @@ export default function ShowtimeScreen({ route, navigation }) {
         </View>
       </View>
 
-      {/* Book Now Button */}
       <View style={styles.bookingSection}>
         <TouchableOpacity
           style={[styles.bookButton, showtime.availableSeats === 0 && styles.bookButtonDisabled]}
           disabled={showtime.availableSeats === 0}
-          onPress={() => navigation.navigate('SeatBooking', {
-            showtimeId: showtime._id,
-            movieTitle,
-            showtime,
-            takenSeats,
-          })}
+          onPress={() =>
+            navigation.navigate('SeatBooking', {
+              showtimeId: showtime._id,
+              movieTitle,
+              showtime,
+              takenSeats,
+            })
+          }
         >
           <Text style={styles.bookButtonText}>
             {showtime.availableSeats === 0 ? 'Sold Out' : 'Select Seats & Book'}

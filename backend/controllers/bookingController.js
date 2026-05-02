@@ -115,6 +115,10 @@ exports.getTakenSeatsForShowtime = async (req, res) => {
 // POST create booking (with seat deduction)
 exports.createBooking = async (req, res) => {
   try {
+    if (req.user?.role === 'admin') {
+      return res.status(403).json({ message: 'Staff accounts cannot make bookings' });
+    }
+
     const { showtimeId, seats } = req.body;
 
     if (!Array.isArray(seats) || seats.length === 0) {

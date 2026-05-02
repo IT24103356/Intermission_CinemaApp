@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, ActivityIndicator, Image, Alert
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../../api/axios';
+import { AuthContext } from '../../context/AuthContext';
 
 export default function MovieDetailScreen({ route, navigation }) {
+  const { user } = useContext(AuthContext);
+  const isAdmin = user?.role === 'admin';
   const { movieId } = route.params;
 
   const [movie,         setMovie]         = useState(null);
@@ -95,9 +98,10 @@ export default function MovieDetailScreen({ route, navigation }) {
   }
 
   const canBook =
-    showtimes.length > 0 && showtimes.some(s => s.availableSeats > 0);
+    !isAdmin && showtimes.length > 0 && showtimes.some(s => s.availableSeats > 0);
 
   const handleBookNow = () => {
+    if (isAdmin) return;
     if (showtimes.length === 0) {
       Alert.alert('No showtimes', 'There are no showtimes for this movie yet.');
       return;
@@ -166,11 +170,13 @@ export default function MovieDetailScreen({ route, navigation }) {
         disabled={!canBook}
       >
         <Text style={[styles.bookNowText, !canBook && styles.bookNowTextDisabled]}>
-          {!canBook && showtimes.length > 0
-            ? 'Sold out'
-            : !canBook
-              ? 'No showtimes'
-              : 'Book now'}
+          {isAdmin
+            ? 'Staff — booking disabled'
+            : !canBook && showtimes.length > 0
+              ? 'Sold out'
+              : !canBook
+                ? 'No showtimes'
+                : 'Book now'}
         </Text>
       </TouchableOpacity>
 
@@ -184,33 +190,39 @@ export default function MovieDetailScreen({ route, navigation }) {
         {showtimes.length === 0 ? (
           <Text style={styles.noShowtimes}>No showtimes available</Text>
         ) : (
-          showtimes.map(show => (
-            <TouchableOpacity
-              key={show._id}
-              style={styles.showtimeCard}
-              onPress={() => navigation.navigate('Showtimes', { showtimeId: show._id, movieTitle: movie.title })}
-            >
-              <View>
-                <Text style={styles.showtimeDate}>{formatDate(show.date)}</Text>
-                <Text style={styles.showtimeScreen}>Screen {show.screenNumber}</Text>
-              </View>
-              <View style={styles.showtimeRight}>
-                <Text style={styles.showtimeTime}>{show.time}</Text>
-                <Text style={styles.showtimeSeats}>{show.availableSeats} seats left</Text>
-              </View>
-            </TouchableOpacity>
-          ))
+          showtimes.map(show => {
+            const cardInner = (
+              <>
+                <View>
+                  <Text style={styles.showtimeDate}>{formatDate(show.date)}</Text>
+                  <Text style={styles.showtimeScreen}>Screen {show.screenNumber}</Text>
+                </View>
+                <View style={styles.showtimeRight}>
+                  <Text style={styles.showtimeTime}>{show.time}</Text>
+                  <Text style={styles.showtimeSeats}>{show.availableSeats} seats left</Text>
+                </View>
+              </>
+            );
+            if (isAdmin) {
+              return (
+                <View key={show._id} style={[styles.showtimeCard, styles.showtimeCardStatic]}>
+                  {cardInner}
+                </View>
+              );
+            }
+            return (
+              <TouchableOpacity
+                key={show._id}
+                style={styles.showtimeCard}
+                onPress={() =>
+                  navigation.navigate('Showtimes', { showtimeId: show._id, movieTitle: movie.title })
+                }
+              >
+                {cardInner}
+              </TouchableOpacity>
+            );
+          })
         )}
-
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.feedbackButton}
-            onPress={() => navigation.navigate('Feedback', { movieId: movie._id, movieTitle: movie.title })}
-          >
-            <Text style={styles.feedbackButtonText}>⭐ Leave a Review</Text>
-          </TouchableOpacity>
-        </View>
 
       </View>
     </ScrollView>
@@ -257,7 +269,5 @@ const styles = StyleSheet.create({
   showtimeRight:      { alignItems: 'flex-end' },
   showtimeTime:       { color: '#e50914', fontSize: 16, fontWeight: '600' },
   showtimeSeats:      { color: '#666', fontSize: 12, marginTop: 2 },
-  actions:            { marginTop: 10, marginBottom: 40 },
-  feedbackButton:     { backgroundColor: '#1c1c1c', borderRadius: 10, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#2a2a2a' },
-  feedbackButtonText: { color: '#EF9F27', fontSize: 15, fontWeight: '500' },
+  showtimeCardStatic: { opacity: 0.95 },
 });

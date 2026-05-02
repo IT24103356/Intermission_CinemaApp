@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import api from '../../api/axios';
+import { AuthContext } from '../../context/AuthContext';
 
 const HALL_H_PADDING = 32;
 const ROW_V_GAP = 7;
@@ -52,6 +53,18 @@ const cardBg = '#0f0f0f';
 const availableFill = '#f5f5f5';
 const takenFill = '#3a3a44';
 
+function webConfirm(message) {
+  return Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm(message);
+}
+
+function webAlertLine(title, body) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(body ? `${title}\n\n${body}` : title);
+    return true;
+  }
+  return false;
+}
+
 function SeatButton({ status, onPress, disabled, label, size }) {
   const s = size || 32;
   const isTaken = status === 'taken';
@@ -91,10 +104,20 @@ function SeatButton({ status, onPress, disabled, label, size }) {
 }
 
 export default function BookingScreen({ route, navigation }) {
+  const { user } = useContext(AuthContext);
+  const isAdmin = user?.role === 'admin';
+  const adminBounce = useRef(false);
   const params = route.params || {};
   const { showtimeId, movieTitle, showtime, takenSeats = [] } = params;
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
+
+  useLayoutEffect(() => {
+    if (isAdmin && !adminBounce.current) {
+      adminBounce.current = true;
+      navigation.goBack();
+    }
+  }, [isAdmin, navigation]);
 
   const seatSize = useMemo(() => {
     const w = Math.max(1, winW - HALL_H_PADDING);
@@ -108,53 +131,73 @@ export default function BookingScreen({ route, navigation }) {
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const takenSet = useMemo(() => new Set((takenSeats || []).map((s) => String(s))), [takenSeats]);
+
   const toggleSeat = seatId => {
-    if (takenSeats.includes(seatId)) return;
+    if (takenSet.has(String(seatId))) return;
     setSelectedSeats(prev =>
       prev.includes(seatId) ? prev.filter(s => s !== seatId) : [...prev, seatId]
     );
   };
 
   const getSeatStatus = seatId => {
-    if (takenSeats.includes(seatId)) return 'taken';
+    if (takenSet.has(String(seatId))) return 'taken';
     if (selectedSeats.includes(seatId)) return 'selected';
     return 'available';
   };
 
-  const handleBooking = () => {
-    if (selectedSeats.length === 0) {
-      Alert.alert('No seats selected', 'Please select at least one seat');
-      return;
+  const goToBookingsTab = useCallback(() => {
+    try {
+      navigation.popToTop?.();
+    } catch {
+      /* popToTop may be unavailable on some web stacks */
     }
-    Alert.alert(
-      'Confirm booking',
-      `Book ${selectedSeats.length} seat(s) for $${selectedSeats.length * PRICE}?\n\nSeats: ${selectedSeats.join(', ')}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', onPress: confirmBooking },
-      ]
-    );
-  };
+    navigation.navigate('Main', { screen: 'Bookings' });
+  }, [navigation]);
 
-  const confirmBooking = async () => {
+  const confirmBooking = useCallback(async () => {
     try {
       setLoading(true);
       await api.post('/bookings', { showtimeId, seats: selectedSeats });
-      Alert.alert('Booking confirmed', `Seats: ${selectedSeats.join(', ')}`, [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.popToTop();
-            navigation.navigate('Main', { screen: 'Bookings' });
-          },
-        },
-      ]);
+      const seatList = selectedSeats.join(', ');
+      if (webAlertLine('Booking confirmed', `Seats: ${seatList}`)) {
+        goToBookingsTab();
+      } else {
+        Alert.alert('Booking confirmed', `Seats: ${seatList}`, [{ text: 'OK', onPress: goToBookingsTab }]);
+      }
     } catch (err) {
-      Alert.alert('Booking failed', err.response?.data?.message || 'Something went wrong');
+      const msg = err.response?.data?.message || 'Something went wrong';
+      if (!webAlertLine('Booking failed', msg)) {
+        Alert.alert('Booking failed', msg);
+      }
     } finally {
       setLoading(false);
     }
+  }, [goToBookingsTab, selectedSeats, showtimeId]);
+
+  const handleBooking = () => {
+    if (selectedSeats.length === 0) {
+      if (!webAlertLine('No seats selected', 'Please select at least one seat.')) {
+        Alert.alert('No seats selected', 'Please select at least one seat');
+      }
+      return;
+    }
+    const detail = `Book ${selectedSeats.length} seat(s) for $${selectedSeats.length * PRICE}?\n\nSeats: ${selectedSeats.join(', ')}`;
+    if (webConfirm(detail)) {
+      void confirmBooking();
+      return;
+    }
+    if (Platform.OS !== 'web') {
+      Alert.alert('Confirm booking', detail, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => void confirmBooking() },
+      ]);
+    }
   };
+
+  if (isAdmin) {
+    return null;
+  }
 
   if (!showtimeId || !showtime) {
     return (
@@ -174,7 +217,7 @@ export default function BookingScreen({ route, navigation }) {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom, 20) + 8,
+          paddingBottom: 24,
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -263,7 +306,14 @@ export default function BookingScreen({ route, navigation }) {
             </Text>
           </View>
         )}
+      </ScrollView>
 
+      <View
+        style={[
+          styles.footerBar,
+          { paddingBottom: Math.max(insets.bottom, 12) },
+        ]}
+      >
         <TouchableOpacity
           style={[
             styles.footerBook,
@@ -271,6 +321,7 @@ export default function BookingScreen({ route, navigation }) {
           ]}
           onPress={handleBooking}
           disabled={loading || selectedSeats.length === 0}
+          activeOpacity={0.85}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
@@ -282,7 +333,7 @@ export default function BookingScreen({ route, navigation }) {
             </Text>
           )}
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -419,8 +470,14 @@ const styles = StyleSheet.create({
   },
   summaryText: { color: '#999', fontSize: 14, marginTop: 4 },
   summaryBold: { color: '#fff', fontWeight: '600' },
+  footerBar: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: cardBg,
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2a',
+  },
   footerBook: {
-    marginHorizontal: 20,
     backgroundColor: accent,
     borderRadius: 14,
     paddingVertical: 16,
