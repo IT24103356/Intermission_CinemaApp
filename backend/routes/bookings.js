@@ -4,6 +4,7 @@ const {
   getBookings,
   getBooking,
   getMyBookings,
+  getMyWatchedMovies,
   getTakenSeatsForShowtime,
   createBooking,
   cancelBooking,
@@ -12,6 +13,7 @@ const {
 
 // All booking routes require login
 router.get('/',          protect, getBookings);    // admin: all bookings
+router.get('/my/watched-movies', protect, getMyWatchedMovies);
 router.get('/my',        protect, getMyBookings);  // user: their own bookings
 router.get('/showtime/:showtimeId/taken', protect, getTakenSeatsForShowtime);
 router.get('/:id',       protect, getBooking);     // single booking

@@ -5,6 +5,7 @@ const {
   remainingFromTotalAndSold,
   withComputedAvailableOne,
 } = require('../utils/showtimeAvailability');
+const { isShowEnded, showEndMsUtc } = require('../utils/showtimeTiming');
 
 async function enrichBookingShowtime(booking) {
   if (!booking) return booking;
@@ -55,12 +56,43 @@ exports.getMyBookings = async (req, res) => {
     const bookings = await Booking.find({ user: req.user.id })
       .populate({
         path:     'showtime',
-        populate: { path: 'movie', select: 'title genre posterUrl' }
+        populate: { path: 'movie', select: 'title genre posterUrl duration' }
       });
     const out = await Promise.all(
       bookings.map(b => enrichBookingShowtime(b))
     );
     res.json(out);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Unique movies from confirmed bookings whose screening has ended (for feedback / "watched")
+exports.getMyWatchedMovies = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ user: req.user.id, status: 'confirmed' }).populate({
+      path: 'showtime',
+      populate: { path: 'movie', select: 'title genre posterUrl duration' },
+    });
+    const bestByMovie = new Map();
+    for (const b of bookings) {
+      const st = b.showtime;
+      const m = st?.movie;
+      if (!st || !m) continue;
+      if (!isShowEnded(st, m.duration)) continue;
+      const id = String(m._id);
+      const endMs = showEndMsUtc(st, m.duration);
+      const prev = bestByMovie.get(id);
+      if (!prev || endMs > prev.endMs) {
+        bestByMovie.set(id, { movie: m, lastEndedAt: new Date(endMs).toISOString(), endMs });
+      }
+    }
+    const rows = Array.from(bestByMovie.values()).map(({ movie, lastEndedAt }) => ({
+      movie,
+      lastEndedAt,
+    }));
+    rows.sort((a, b) => (a.lastEndedAt < b.lastEndedAt ? 1 : -1));
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -140,7 +172,10 @@ exports.createBooking = async (req, res) => {
 exports.cancelBooking = async (req, res) => {
   try {
     // Step 1 — find the booking
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id).populate({
+      path: 'showtime',
+      populate: { path: 'movie', select: 'duration' },
+    });
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
     // Step 2 — make sure it belongs to the logged in user
@@ -151,6 +186,10 @@ exports.cancelBooking = async (req, res) => {
     // Step 3 — check it is not already cancelled
     if (booking.status === 'cancelled') {
       return res.status(400).json({ message: 'Booking already cancelled' });
+    }
+
+    if (booking.showtime && isShowEnded(booking.showtime, booking.showtime.movie?.duration)) {
+      return res.status(400).json({ message: 'This screening has ended; the booking cannot be cancelled' });
     }
 
     // Step 4 — cancel the booking (display capacity is recomputed from confirmed bookings)

@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Feedback = require('../models/Feedback');
 const Movie    = require('../models/Movie');
+const Booking  = require('../models/Booking');
+const { isShowEnded } = require('../utils/showtimeTiming');
 
 // GET all feedback (admin)
 exports.getFeedbacks = async (req, res) => {
@@ -91,6 +93,26 @@ exports.createFeedback = async (req, res) => {
     // Check movie exists
     const movie = await Movie.findById(movieId);
     if (!movie) return res.status(404).json({ message: 'Movie not found' });
+
+    const attendedEnded = await Booking.find({
+      user: req.user.id,
+      status: 'confirmed',
+    }).populate({
+      path: 'showtime',
+      populate: { path: 'movie', select: '_id duration' },
+    });
+    const canReview = attendedEnded.some(b => {
+      const st = b.showtime;
+      if (!st?.movie) return false;
+      const mid = st.movie._id?.toString?.() || String(st.movie);
+      if (mid !== String(movieId)) return false;
+      return isShowEnded(st, st.movie.duration);
+    });
+    if (!canReview) {
+      return res.status(403).json({
+        message: 'You can only review movies you watched (after a confirmed screening has ended)',
+      });
+    }
 
     // Check user has not already reviewed this movie
     const existing = await Feedback.findOne({

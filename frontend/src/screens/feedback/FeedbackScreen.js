@@ -59,7 +59,8 @@ export default function FeedbackScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const tabBarHeight = useBottomTabBarHeight();
 
-  const [movies, setMovies] = useState([]);
+  /** Movies the user may review (confirmed booking + screening ended) */
+  const [watchedRows, setWatchedRows] = useState([]);
   const [myFeedback, setMyFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,14 +100,14 @@ export default function FeedbackScreen({ navigation }) {
 
   const load = useCallback(async () => {
     try {
-      const [mRes, fRes] = await Promise.allSettled([
-        api.get('/movies'),
+      const [wRes, fRes] = await Promise.allSettled([
+        user ? api.get('/bookings/my/watched-movies') : Promise.resolve({ data: [] }),
         user ? api.get('/feedback/my') : Promise.resolve({ data: [] }),
       ]);
-      if (mRes.status === 'fulfilled' && Array.isArray(mRes.value.data)) {
-        setMovies(mRes.value.data);
+      if (wRes.status === 'fulfilled' && Array.isArray(wRes.value.data)) {
+        setWatchedRows(wRes.value.data);
       } else {
-        setMovies([]);
+        setWatchedRows([]);
       }
       if (fRes.status === 'fulfilled' && Array.isArray(fRes.value.data)) {
         setMyFeedback(fRes.value.data);
@@ -114,7 +115,7 @@ export default function FeedbackScreen({ navigation }) {
         setMyFeedback([]);
       }
     } catch {
-      setMovies([]);
+      setWatchedRows([]);
       setMyFeedback([]);
     } finally {
       setLoading(false);
@@ -225,7 +226,7 @@ export default function FeedbackScreen({ navigation }) {
             </TouchableOpacity>
             <View style={styles.bannerTextWrap}>
               <Text style={styles.h1}>Feedback</Text>
-              <Text style={styles.bannerCaption}>Log in to rate movies you’ve seen at our cinema.</Text>
+              <Text style={styles.bannerCaption}>Log in to rate movies you have watched (after a screening ends).</Text>
             </View>
           </View>
         </View>
@@ -241,7 +242,12 @@ export default function FeedbackScreen({ navigation }) {
     );
   }
 
-  const toRate = movies.filter(m => !reviewedIds.has(String(m._id)));
+  const watchedMovies = useMemo(
+    () => watchedRows.map((r) => r.movie).filter(Boolean),
+    [watchedRows]
+  );
+
+  const toRate = watchedMovies.filter((m) => !reviewedIds.has(String(m._id)));
 
   return (
     <ScrollView
@@ -257,7 +263,7 @@ export default function FeedbackScreen({ navigation }) {
           <View style={styles.bannerTextWrap}>
             <Text style={styles.h1}>Feedback</Text>
             <Text style={styles.bannerCaption}>
-              Share a 1–5 star rating and optional note for any movie in our list.
+              You can only review movies from confirmed bookings after the screening has ended.
             </Text>
           </View>
         </View>
@@ -297,9 +303,12 @@ export default function FeedbackScreen({ navigation }) {
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnT}>Post review</Text>}
         </TouchableOpacity>
 
-        {toRate.length === 0 && movies.length > 0 && (
+        {toRate.length === 0 && watchedMovies.length > 0 && (
+          <Text style={styles.hint}>You have rated every movie you have watched. Thanks!</Text>
+        )}
+        {watchedMovies.length === 0 && (
           <Text style={styles.hint}>
-            You’ve rated every movie in the list. Thanks!
+            No eligible movies yet. Book a ticket, attend the show, then post feedback here or from Bookings → Watched.
           </Text>
         )}
       </View>
@@ -374,7 +383,9 @@ export default function FeedbackScreen({ navigation }) {
             <Text style={styles.modalH}>Choose a movie</Text>
             {toRate.length === 0 ? (
               <Text style={styles.mutedP}>
-                {movies.length ? 'All movies are already rated.' : 'No movies in the catalogue yet.'}
+                {watchedMovies.length
+                  ? 'You have already reviewed every movie you have watched.'
+                  : 'Attend a screening first; only watched movies can be reviewed.'}
               </Text>
             ) : (
               <FlatList
