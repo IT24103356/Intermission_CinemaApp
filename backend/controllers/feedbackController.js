@@ -142,17 +142,32 @@ exports.createFeedback = async (req, res) => {
   }
 };
 
-// PUT update feedback (admin only — users cannot edit after submit)
+// PUT update feedback — only the author may change their review
 exports.updateFeedback = async (req, res) => {
   try {
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
 
-    const updated = await Feedback.findByIdAndUpdate(
-      req.params.id,
-      { rating: req.body.rating, comment: req.body.comment },
-      { new: true, runValidators: true }
-    );
+    const ownerId = String(feedback.user?._id ?? feedback.user);
+    const requesterId = String(req.user.id);
+    if (ownerId !== requesterId) {
+      return res.status(403).json({ message: 'You can only edit your own feedback' });
+    }
+
+    const rating = Number(req.body.rating);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'Rating must be between 1 and 5' });
+    }
+
+    const patch = { rating };
+    if (Object.prototype.hasOwnProperty.call(req.body, 'comment')) {
+      patch.comment = String(req.body.comment ?? '').trim();
+    }
+
+    const updated = await Feedback.findByIdAndUpdate(req.params.id, patch, {
+      new: true,
+      runValidators: true,
+    });
 
     res.json(updated);
   } catch (err) {

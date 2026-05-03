@@ -88,6 +88,11 @@ export default function FeedbackScreen({ navigation }) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+  const [editModal, setEditModal] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editRating, setEditRating] = useState(0);
+  const [editComment, setEditComment] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const reviewFilterOptions = useMemo(() => {
     const map = new Map();
@@ -217,6 +222,42 @@ export default function FeedbackScreen({ navigation }) {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void go() },
     ]);
+  };
+
+  const openEditModal = f => {
+    setEditTarget(f);
+    setEditRating(Math.min(5, Math.max(1, Number(f.rating) || 1)));
+    setEditComment(typeof f.comment === 'string' ? f.comment : '');
+    setEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModal(false);
+    setEditTarget(null);
+    setEditRating(0);
+    setEditComment('');
+  };
+
+  const submitEdit = async () => {
+    if (!editTarget?._id) return;
+    if (editRating < 1 || editRating > 5) {
+      Alert.alert('Rating', 'Choose a star rating from 1 to 5.');
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      await api.put(`/feedback/${editTarget._id}`, {
+        rating: editRating,
+        comment: editComment.trim(),
+      });
+      await load();
+      closeEditModal();
+      Alert.alert('Updated', 'Your review was saved.');
+    } catch (err) {
+      Alert.alert('Could not save', err.response?.data?.message || 'Try again');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const padBottom = tabBarHeight + 16;
@@ -357,18 +398,28 @@ export default function FeedbackScreen({ navigation }) {
                     <Text style={styles.reviewTitle} numberOfLines={2}>
                       {title}
                     </Text>
-                    <TouchableOpacity
-                      style={styles.deleteReviewBtn}
-                      onPress={() => confirmDeleteReview(f)}
-                      disabled={deletingId === f._id}
-                      accessibilityLabel="Delete review"
-                    >
-                      {deletingId === f._id ? (
-                        <ActivityIndicator size="small" color={ACCENT} />
-                      ) : (
-                        <Ionicons name="trash-outline" size={20} color="#c44" />
-                      )}
-                    </TouchableOpacity>
+                    <View style={styles.reviewActions}>
+                      <TouchableOpacity
+                        style={styles.iconReviewBtn}
+                        onPress={() => openEditModal(f)}
+                        disabled={deletingId === f._id || savingEdit}
+                        accessibilityLabel="Edit review"
+                      >
+                        <Ionicons name="pencil-outline" size={20} color={ACCENT} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.iconReviewBtn}
+                        onPress={() => confirmDeleteReview(f)}
+                        disabled={deletingId === f._id || savingEdit}
+                        accessibilityLabel="Delete review"
+                      >
+                        {deletingId === f._id ? (
+                          <ActivityIndicator size="small" color={ACCENT} />
+                        ) : (
+                          <Ionicons name="trash-outline" size={20} color="#c44" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
                   <StarDisplay value={f.rating} size={20} />
                   {f.comment ? <Text style={styles.reviewComment}>{f.comment}</Text> : null}
@@ -387,6 +438,51 @@ export default function FeedbackScreen({ navigation }) {
           )}
         </>
       )}
+
+      <Modal visible={editModal} animationType="fade" transparent onRequestClose={closeEditModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalH}>Edit review</Text>
+            {editTarget ? (
+              <Text style={styles.editMovieTitle} numberOfLines={2}>
+                {editTarget.movie?.title || 'Movie'}
+              </Text>
+            ) : null}
+            <Text style={styles.label}>Your rating</Text>
+            <Stars value={editRating} onChange={setEditRating} size={28} />
+            {editRating > 0 ? (
+              <Text style={styles.ratingHint}>
+                {editRating} — {ratingLabel(editRating)}
+              </Text>
+            ) : null}
+            <Text style={styles.label}>Comment (optional)</Text>
+            <TextInput
+              style={styles.textArea}
+              placeholder="What did you think?"
+              placeholderTextColor="#666"
+              value={editComment}
+              onChangeText={setEditComment}
+              multiline
+            />
+            <View style={styles.editModalActions}>
+              <TouchableOpacity onPress={closeEditModal} disabled={savingEdit}>
+                <Text style={styles.link}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.editSaveBtn, savingEdit && styles.btnDisabled]}
+                onPress={() => void submitEdit()}
+                disabled={savingEdit}
+              >
+                {savingEdit ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.editSaveBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={filterModal} animationType="fade" transparent onRequestClose={() => setFilterModal(false)}>
         <View style={styles.modalOverlay}>
@@ -570,11 +666,25 @@ const styles = StyleSheet.create({
   reviewBody: { flex: 1, minWidth: 0 },
   reviewTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   reviewTitle: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '600' },
-  deleteReviewBtn: {
-    padding: 6,
-    marginTop: -4,
-    marginRight: -4,
+  reviewActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  iconReviewBtn: { padding: 6, marginTop: -4 },
+  editMovieTitle: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 12 },
+  editModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 4,
   },
+  editSaveBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  editSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   reviewComment: { color: MUTED, fontSize: 14, marginTop: 6 },
   adminReplyBox: {
     marginTop: 12,
