@@ -19,12 +19,33 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 
+/** Genre chips — `id` is matched as a substring of `movie.genre` (case-insensitive). */
 const categories = [
   { id: 'All', label: 'All', icon: '🎬' },
-  { id: 'Drama', label: 'Drama', icon: '🎭' },
-  { id: 'Romance', label: 'Romance', icon: '♡' },
   { id: 'Action', label: 'Action', icon: '⚔️' },
+  { id: 'Adventure', label: 'Adventure', icon: '🧭' },
+  { id: 'Animation', label: 'Animation', icon: '🎨' },
+  { id: 'Biography', label: 'Biography', icon: '📖' },
   { id: 'Comedy', label: 'Comedy', icon: '😂' },
+  { id: 'Crime', label: 'Crime', icon: '🔫' },
+  { id: 'Documentary', label: 'Documentary', icon: '📽️' },
+  { id: 'Drama', label: 'Drama', icon: '🎭' },
+  { id: 'Family', label: 'Family', icon: '👨‍👩‍👧' },
+  { id: 'Fantasy', label: 'Fantasy', icon: '✨' },
+  { id: 'History', label: 'History', icon: '🏛️' },
+  { id: 'Horror', label: 'Horror', icon: '👻' },
+  { id: 'Music', label: 'Music', icon: '🎵' },
+  { id: 'Musical', label: 'Musical', icon: '🎤' },
+  { id: 'Mystery', label: 'Mystery', icon: '🔎' },
+  { id: 'Romance', label: 'Romance', icon: '💕' },
+  { id: 'Sci-Fi', label: 'Sci-Fi', icon: '🛸' },
+  { id: 'Science Fiction', label: 'Science Fiction', icon: '🚀' },
+  { id: 'Sport', label: 'Sport', icon: '⚽' },
+  { id: 'TV Movie', label: 'TV Movie', icon: '📺' },
+  { id: 'Superhero', label: 'Superhero', icon: '🦸' },
+  { id: 'Thriller', label: 'Thriller', icon: '🎯' },
+  { id: 'War', label: 'War', icon: '🎖️' },
+  { id: 'Western', label: 'Western', icon: '🤠' },
 ];
 
 export default function MovieListScreen({ navigation }) {
@@ -86,8 +107,8 @@ export default function MovieListScreen({ navigation }) {
     [filteredMovies]
   );
 
-  const popularMovies = useMemo(
-    () => [...filteredMovies].sort((a, b) => Number(b.isTrending) - Number(a.isTrending)),
+  const comingSoonMovies = useMemo(
+    () => filteredMovies.filter(movie => movie.status === 'Coming Soon'),
     [filteredMovies]
   );
 
@@ -157,9 +178,6 @@ export default function MovieListScreen({ navigation }) {
           <Text style={styles.posterFallbackEmoji}>🎬</Text>
         </View>
       )}
-      <TouchableOpacity style={styles.posterAction}>
-        <Text style={styles.posterActionText}>♡</Text>
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -307,9 +325,6 @@ export default function MovieListScreen({ navigation }) {
               <Text style={styles.subtitle}>Let's book your favorite film</Text>
             </View>
             <View style={styles.headerButtons}>
-              <TouchableOpacity style={styles.iconButton}>
-                <Text style={styles.iconText}>⌕</Text>
-              </TouchableOpacity>
               <TouchableOpacity style={styles.iconButton} onPress={logout}>
                 <Text style={styles.iconText}>⎋</Text>
               </TouchableOpacity>
@@ -407,7 +422,16 @@ export default function MovieListScreen({ navigation }) {
 
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Now in cinemas</Text>
-              <TouchableOpacity>
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('BrowseMovies', {
+                    status: 'Now Showing',
+                    category: activeCategory,
+                    search: search.trim(),
+                  })
+                }
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              >
                 <Text style={styles.seeAll}>See all</Text>
               </TouchableOpacity>
             </View>
@@ -427,15 +451,24 @@ export default function MovieListScreen({ navigation }) {
             )}
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Popular Movies</Text>
-              <TouchableOpacity>
+              <Text style={styles.sectionTitle}>Coming soon</Text>
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('BrowseMovies', {
+                    status: 'Coming Soon',
+                    category: activeCategory,
+                    search: search.trim(),
+                  })
+                }
+                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              >
                 <Text style={styles.seeAll}>See all</Text>
               </TouchableOpacity>
             </View>
-            {popularMovies.length === 0 ? (
-              <Text style={styles.empty}>No movies found</Text>
+            {comingSoonMovies.length === 0 ? (
+              <Text style={styles.empty}>No coming soon titles match your search or category.</Text>
             ) : (
-              popularMovies.map(item => <View key={item._id}>{renderPopularRow({ item })}</View>)
+              comingSoonMovies.map(item => <View key={item._id}>{renderPopularRow({ item })}</View>)
             )}
           </>
         )}
@@ -582,7 +615,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: '#1c1c1c',
-    position: 'relative',
   },
   posterImage: { width: '100%', height: '100%' },
   posterFallback: {
@@ -592,18 +624,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a2a',
   },
   posterFallbackEmoji: { fontSize: 30 },
-  posterAction: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  posterActionText: { color: '#fff', fontSize: 14 },
   popularRow: {
     flexDirection: 'row',
     paddingVertical: 8,

@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -225,10 +226,11 @@ export default function BookingScreen({ route, navigation }) {
         <View style={[styles.topRow, { paddingTop: 8 }]}>
           <TouchableOpacity
             style={styles.backCircle}
+            accessibilityLabel="Go back"
             onPress={() => navigation.goBack()}
             activeOpacity={0.8}
           >
-            <Text style={styles.backChevron}>‹</Text>
+            <Ionicons name="chevron-back" size={28} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {movieTitle}
@@ -355,13 +357,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  backChevron: {
-    color: '#fff',
-    fontSize: 28,
-    lineHeight: Platform.OS === 'ios' ? 32 : 30,
-    fontWeight: '300',
-    marginTop: -2,
   },
   headerTitle: {
     flex: 1,

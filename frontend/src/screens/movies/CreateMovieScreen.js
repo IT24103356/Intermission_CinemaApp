@@ -10,8 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Switch,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/axios';
 
 const STATUS_OPTIONS = ['Now Showing', 'Coming Soon'];
@@ -27,7 +27,6 @@ export default function CreateMovieScreen({ navigation, route }) {
   const [description, setDescription] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
   const [status, setStatus] = useState('Coming Soon');
-  const [isTrending, setIsTrending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -44,7 +43,6 @@ export default function CreateMovieScreen({ navigation, route }) {
     setDescription(movieToEdit.description || '');
     setPosterUrl(movieToEdit.posterUrl || '');
     setStatus(movieToEdit.status || 'Coming Soon');
-    setIsTrending(Boolean(movieToEdit.isTrending));
   }, [movieToEdit]);
 
   const validateForm = () => {
@@ -78,7 +76,7 @@ export default function CreateMovieScreen({ navigation, route }) {
       description: description.trim() || undefined,
       posterUrl: posterUrl.trim() || undefined,
       status,
-      isTrending,
+      isTrending: isEditMode ? Boolean(movieToEdit?.isTrending) : false,
     };
 
     try {
@@ -110,8 +108,12 @@ export default function CreateMovieScreen({ navigation, route }) {
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         <View style={styles.topBanner}>
           <View style={styles.bannerHeader}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backButtonText}>←</Text>
+            <TouchableOpacity
+              style={styles.backButton}
+              accessibilityLabel="Go back"
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>
             <View style={styles.bannerTextWrap}>
               <Text style={styles.title}>{isEditMode ? 'Edit Movie' : 'Add New Movie'}</Text>
@@ -189,16 +191,6 @@ export default function CreateMovieScreen({ navigation, route }) {
           ))}
         </View>
 
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Trending Movie</Text>
-          <Switch
-            value={isTrending}
-            onValueChange={setIsTrending}
-            thumbColor={isTrending ? '#e50914' : '#ddd'}
-            trackColor={{ false: '#444', true: '#6b1419' }}
-          />
-        </View>
-
         <TouchableOpacity
           style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
           onPress={handleCreateMovie}
@@ -256,12 +248,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 24,
-  },
   title: {
     color: '#fff',
     fontSize: 24,
@@ -313,17 +299,6 @@ const styles = StyleSheet.create({
   },
   statusTextActive: {
     color: '#fff',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-    paddingVertical: 6,
-  },
-  switchLabel: {
-    color: '#fff',
-    fontSize: 15,
   },
   submitButton: {
     backgroundColor: '#e50914',

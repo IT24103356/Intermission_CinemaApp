@@ -4,6 +4,7 @@ import {
   StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -70,8 +71,12 @@ export default function ShowtimeScreen({ route, navigation }) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.topBanner}>
         <View style={styles.bannerHeader}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backButtonText}>←</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="chevron-back" size={26} color="#fff" />
           </TouchableOpacity>
           <View style={styles.bannerTextWrap}>
             <Text style={styles.movieTitle}>{movieTitle}</Text>
@@ -149,7 +154,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   header:              { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 8 },
   movieTitle:          { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 6 },
   date:                { fontSize: 14, color: '#ffd7db', marginBottom: 0 },

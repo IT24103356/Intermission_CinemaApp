@@ -10,11 +10,13 @@ import LoginScreen      from '../screens/auth/LoginScreen';
 import RegisterScreen   from '../screens/auth/RegisterScreen';
 import MovieListScreen  from '../screens/movies/MovieListScreen';
 import MovieDetailScreen from '../screens/movies/MovieDetailScreen';
+import BrowseMoviesScreen from '../screens/movies/BrowseMoviesScreen';
 import CreateMovieScreen from '../screens/movies/CreateMovieScreen';
 import ShowtimeScreen   from '../screens/showtimes/ShowtimeScreen';
 import AdminShowtimesScreen from '../screens/admin/AdminShowtimesScreen';
 import AdminFeedbackScreen from '../screens/admin/AdminFeedbackScreen';
 import AdminSuggestionsScreen from '../screens/admin/AdminSuggestionsScreen';
+import ApprovedSuggestionsScreen from '../screens/admin/ApprovedSuggestionsScreen';
 import BookingScreen    from '../screens/bookings/BookingScreen';
 import MyBookingsScreen from '../screens/bookings/MyBookingsScreen';
 import FeedbackScreen   from '../screens/feedback/FeedbackScreen';
@@ -79,10 +81,12 @@ const AppNavigator = () => {
               component={user.role === 'admin' ? AdminTabs : MainTabs}
             />
             <Stack.Screen name="MovieDetail" component={MovieDetailScreen} />
+            <Stack.Screen name="BrowseMovies" component={BrowseMoviesScreen} />
             <Stack.Screen name="CreateMovie"     component={CreateMovieScreen} />
             <Stack.Screen name="Showtimes"       component={ShowtimeScreen} />
             <Stack.Screen name="SeatBooking"     component={BookingScreen} />
             <Stack.Screen name="AdminShowtimes"  component={AdminShowtimesScreen} />
+            <Stack.Screen name="ApprovedSuggestions" component={ApprovedSuggestionsScreen} />
           </>
         ) : (
           // Auth screens

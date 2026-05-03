@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -34,6 +35,10 @@ function hasVoted(s, userId) {
   return s.votedBy.some(id => String(id) === String(userId));
 }
 
+function suggestionStatus(s) {
+  return s?.status || 'pending';
+}
+
 function isOwner(s, userId) {
   if (!userId) return false;
   const uid = s.user?._id != null ? s.user._id : s.user;
@@ -43,7 +48,7 @@ function isOwner(s, userId) {
 export default function SuggestionScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const tabBarHeight = useBottomTabBarHeight();
-  const userId = user?._id;
+  const userId = user?._id ?? user?.id;
 
   const [tab, setTab] = useState('all');
   const [list, setList] = useState([]);
@@ -150,7 +155,10 @@ export default function SuggestionScreen({ navigation }) {
   const renderItem = ({ item: s }) => {
     const own = isOwner(s, userId);
     const voted = hasVoted(s, userId);
-    const st = statusStyle(s.status);
+    const stKey = suggestionStatus(s);
+    const st = statusStyle(stKey);
+    const isPending = stKey === 'pending';
+    const canUpvote = stKey === 'pending' || stKey === 'approved';
     return (
       <View style={styles.requestCard}>
         <View style={styles.requestHead}>
@@ -159,7 +167,7 @@ export default function SuggestionScreen({ navigation }) {
           </Text>
           <View style={[styles.badge, { backgroundColor: st.bg }]}>
             <Text style={[styles.badgeT, { color: st.color }]}>
-              {s.status === 'pending' ? 'Pending' : s.status}
+              {isPending ? 'Pending' : stKey}
             </Text>
           </View>
         </View>
@@ -171,7 +179,7 @@ export default function SuggestionScreen({ navigation }) {
         ) : null}
         <View style={styles.requestFoot}>
           <Text style={styles.votes}>{s.votes ?? 0} votes</Text>
-          {user && !own && s.status === 'pending' && (
+          {user && !own && canUpvote && (
             <TouchableOpacity
               style={[styles.voteBtn, (voted || votingId === s._id) && styles.voteBtnOff]}
               onPress={() => !voted && vote(s._id)}
@@ -184,7 +192,7 @@ export default function SuggestionScreen({ navigation }) {
               )}
             </TouchableOpacity>
           )}
-          {user && own && s.status === 'pending' && (
+          {user && own && isPending && (
             <Pressable
               onPress={() => setPendingDelete(s)}
               hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
@@ -207,13 +215,17 @@ export default function SuggestionScreen({ navigation }) {
       <View style={styles.headerBlock}>
         <View style={styles.topBanner}>
           <View style={styles.bannerHeader}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
-              <Text style={styles.backButtonText}>←</Text>
+            <TouchableOpacity
+              style={styles.backButton}
+              accessibilityLabel="Go back"
+              onPress={() => navigation.navigate('Movies')}
+            >
+              <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>
             <View style={styles.bannerTextWrap}>
               <Text style={styles.h1}>Movie requests</Text>
               <Text style={styles.bannerCaption}>
-                Suggest a title for our lineup. The community can upvote and staff can review requests.
+                Suggest a title for our lineup. Other users can upvote pending and approved requests.
               </Text>
             </View>
           </View>
@@ -369,7 +381,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   h1: { color: '#fff', fontSize: 24, fontWeight: '700' },
   bannerCaption: { color: '#ffd7db', fontSize: 14, marginTop: 6, lineHeight: 20 },
   caption: { color: MUTED, fontSize: 14, marginTop: 8, marginBottom: 16, lineHeight: 20 },

@@ -14,6 +14,9 @@ import {
   Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../api/axios';
 
@@ -35,6 +38,9 @@ function dateIsoUtcNoonFromYmd(yyyyMmDd) {
 export default function AdminShowtimesScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const isAdmin = user?.role === 'admin';
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const scrollPadBottom = Math.max(tabBarHeight, 112) + insets.bottom + 24;
 
   const [dateStr, setDateStr] = useState(() => toLocalDateString(new Date()));
   const [movies, setMovies] = useState([]);
@@ -284,14 +290,18 @@ export default function AdminShowtimesScreen({ navigation }) {
   return (
     <View style={styles.root}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingBottom: scrollPadBottom }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
         <View style={styles.topBanner}>
           <View style={styles.bannerHeader}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
-              <Text style={styles.backButtonText}>←</Text>
+            <TouchableOpacity
+              style={styles.backButton}
+              accessibilityLabel="Go back"
+              onPress={() => navigation.navigate('Movies')}
+            >
+              <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>
             <View style={styles.bannerTextWrap}>
               <Text style={styles.title}>Showtimes</Text>
@@ -324,6 +334,55 @@ export default function AdminShowtimesScreen({ navigation }) {
         <Text style={styles.dateHint}>
           Selected: {dateStr} — tap any day to switch
         </Text>
+
+        <View style={styles.scheduleSection}>
+          <View style={styles.listHeader}>
+            <Text style={styles.sectionTitle}>Schedule for {dateStr}</Text>
+            {listLoading && <ActivityIndicator color="#e50914" size="small" />}
+          </View>
+          <Text style={styles.scheduleHint}>
+            Tap Edit to load that screening into the form below, change fields, then use Save changes.
+          </Text>
+          {list.length === 0 && !listLoading ? (
+            <Text style={styles.muted}>No showtimes on this date yet.</Text>
+          ) : (
+            list.map(st => {
+              const movieTitle =
+                st.movie && typeof st.movie === 'object' && st.movie.title
+                  ? st.movie.title
+                  : 'Movie';
+              return (
+                <View key={st._id} style={styles.card}>
+                  <View style={styles.cardText}>
+                    <Text style={styles.cardTitle} numberOfLines={2}>
+                      {movieTitle}
+                    </Text>
+                    <Text style={styles.cardLine}>
+                      {st.time} · Screen {st.screenNumber} · {st.availableSeats} / {st.totalSeats} seats
+                    </Text>
+                  </View>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity
+                      onPress={() => startEdit(st)}
+                      style={styles.editBtn}
+                      disabled={submitting}
+                    >
+                      <Text style={styles.editBtnText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDelete(st._id)}
+                      style={styles.removeBtn}
+                    >
+                      <Text style={styles.removeBtnText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <Text style={styles.formSectionTitle}>Add or edit showtime</Text>
 
         <Text style={styles.label}>Movie</Text>
         <TouchableOpacity
@@ -390,40 +449,6 @@ export default function AdminShowtimesScreen({ navigation }) {
             </Text>
           )}
         </TouchableOpacity>
-
-        <View style={styles.listHeader}>
-          <Text style={styles.sectionTitle}>Schedule for {dateStr}</Text>
-          {listLoading && <ActivityIndicator color="#e50914" size="small" />}
-        </View>
-        {list.length === 0 && !listLoading ? (
-          <Text style={styles.muted}>No showtimes on this date yet.</Text>
-        ) : (
-          list.map((st) => (
-            <View key={st._id} style={styles.card}>
-              <View style={styles.cardText}>
-                <Text style={styles.cardTitle} numberOfLines={1}>
-                  {st.movie?.title || 'Movie'}
-                </Text>
-                <Text style={styles.cardLine}>
-                  {st.time} · Screen {st.screenNumber} · {st.availableSeats} / {st.totalSeats} seats
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => startEdit(st)}
-                style={styles.edit}
-                disabled={submitting}
-              >
-                <Text style={styles.editText}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleDelete(st._id)}
-                style={styles.trash}
-              >
-                <Text style={styles.trashText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
-          ))
-        )}
       </ScrollView>
 
       <Modal visible={movieModal} animationType="slide" transparent>
@@ -461,7 +486,7 @@ export default function AdminShowtimesScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0f0f0f' },
-  scroll: { padding: 20, paddingTop: 8, paddingBottom: 40 },
+  scroll: { padding: 20, paddingTop: 8 },
   centered: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
     backgroundColor: '#0f0f0f', padding: 24,
@@ -492,7 +517,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   backBtn: { backgroundColor: '#1c1c1c', padding: 14, borderRadius: 10 },
   backBtnText: { color: '#fff' },
   title: { color: '#fff', fontSize: 24, fontWeight: '700' },
@@ -538,24 +562,67 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 12 },
   half: { flex: 1, minWidth: 0 },
   addBtn: {
-    backgroundColor: '#e50914', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 28,
+    backgroundColor: '#e50914', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 16,
   },
   addBtnDisabled: { opacity: 0.7 },
   addBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  sectionTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  muted: { color: '#666', fontSize: 14, marginBottom: 12 },
-  card: {
-    backgroundColor: '#1c1c1c', borderRadius: 10, padding: 12, marginBottom: 10,
-    borderWidth: 1, borderColor: '#2a2a2a', flexDirection: 'row', alignItems: 'center', gap: 8,
+  scheduleSection: { marginBottom: 8 },
+  scheduleHint: { color: '#b8b8b8', fontSize: 13, marginBottom: 14, lineHeight: 19 },
+  formSectionTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 14,
+    marginTop: 4,
   },
-  cardText: { flex: 1, minWidth: 0 },
-  cardTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  cardLine: { color: '#999', fontSize: 13, marginTop: 4 },
-  edit: { padding: 8 },
-  editText: { color: '#e50914', fontSize: 14, fontWeight: '600' },
-  trash: { padding: 8 },
-  trashText: { color: '#c44', fontSize: 14, fontWeight: '600' },
+  listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  muted: { color: '#a8a8a8', fontSize: 14, marginBottom: 14 },
+  card: {
+    backgroundColor: '#262626',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#444',
+    width: '100%',
+  },
+  cardText: { width: '100%' },
+  cardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+    flexWrap: 'wrap',
+  },
+  cardTitle: { color: '#ffffff', fontSize: 17, fontWeight: '700' },
+  cardLine: { color: '#d4d4d4', fontSize: 14, marginTop: 6, fontWeight: '500' },
+  editBtn: {
+    backgroundColor: '#c80712',
+    paddingVertical: 11,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    minWidth: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#c80712',
+  },
+  editBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  removeBtn: {
+    backgroundColor: '#7f1d1d',
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#f87171',
+  },
+  removeBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24,
   },

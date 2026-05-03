@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../api/axios';
 
@@ -183,8 +184,12 @@ export default function AdminFeedbackScreen({ navigation }) {
           <>
             <View style={styles.topBanner}>
               <View style={styles.bannerHeader}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
-                  <Text style={styles.backButtonText}>←</Text>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  accessibilityLabel="Go back"
+                  onPress={() => navigation.navigate('Movies')}
+                >
+                  <Ionicons name="chevron-back" size={26} color="#fff" />
                 </TouchableOpacity>
                 <View style={styles.bannerTextWrap}>
                   <Text style={styles.title}>Feedback Inbox</Text>
@@ -359,7 +364,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   title: { color: '#fff', fontSize: 24, fontWeight: '700' },
   bannerCaption: { color: '#ffd7db', fontSize: 14, marginTop: 6 },
   muted: { color: MUTED, fontSize: 14, marginTop: 6 },

@@ -52,7 +52,7 @@ exports.getSuggestionsByStatus = async (req, res) => {
   try {
     const suggestions = await Suggestion.find({ status: req.params.status })
       .populate('user', 'name')
-      .sort({ votes: -1 });
+      .sort({ votes: -1, createdAt: -1 });
     res.json(suggestions);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -90,16 +90,26 @@ exports.createSuggestion = async (req, res) => {
 // PUT vote on suggestion
 exports.voteSuggestion = async (req, res) => {
   try {
+    const voterId = req.user?.id != null ? String(req.user.id) : String(req.user?._id ?? '');
+    if (!voterId) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+
     const suggestion = await Suggestion.findById(req.params.id);
     if (!suggestion) return res.status(404).json({ message: 'Suggestion not found' });
 
+    const st = suggestion.status || 'pending';
+    if (st === 'rejected') {
+      return res.status(400).json({ message: 'This request was rejected and no longer accepts votes.' });
+    }
+
     // Prevent user from voting on their own suggestion
-    if (suggestion.user.toString() === req.user.id) {
+    if (String(suggestion.user) === voterId) {
       return res.status(400).json({ message: 'You cannot vote on your own suggestion' });
     }
 
-    // Check if already voted
-    if (suggestion.votedBy && suggestion.votedBy.includes(req.user.id)) {
+    const votedIds = (suggestion.votedBy || []).map(v => String(v));
+    if (votedIds.includes(voterId)) {
       return res.status(400).json({ message: 'You have already voted for this suggestion' });
     }
 
@@ -107,7 +117,7 @@ exports.voteSuggestion = async (req, res) => {
       req.params.id,
       {
         $inc:  { votes: 1 },
-        $push: { votedBy: req.user.id }
+        $push: { votedBy: voterId }
       },
       { new: true }
     );

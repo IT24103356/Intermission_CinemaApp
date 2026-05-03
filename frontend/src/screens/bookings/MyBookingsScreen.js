@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 import { isShowEnded } from '../../utils/showtimeTiming';
@@ -143,8 +144,12 @@ export default function MyBookingsScreen({ navigation }) {
     <View style={styles.container}>
       <View style={styles.topBanner}>
         <View style={styles.bannerHeader}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
-            <Text style={styles.backButtonText}>←</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            onPress={() => navigation.navigate('Movies')}
+          >
+            <Ionicons name="chevron-back" size={26} color="#fff" />
           </TouchableOpacity>
           <View style={styles.bannerTextWrap}>
             <Text style={styles.title}>My bookings</Text>
@@ -280,7 +285,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f0f0f' },
   title: { fontSize: 24, fontWeight: '700', color: '#fff' },
   bannerCaption: { color: '#ffd7db', fontSize: 14, marginTop: 6, lineHeight: 20 },

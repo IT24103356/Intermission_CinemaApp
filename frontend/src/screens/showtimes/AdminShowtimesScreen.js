@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../api/axios';
 
@@ -290,8 +291,12 @@ export default function AdminShowtimesScreen({ navigation }) {
       >
         <View style={styles.topBanner}>
           <View style={styles.bannerHeader}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
-              <Text style={styles.backButtonText}>←</Text>
+            <TouchableOpacity
+              style={styles.backButton}
+              accessibilityLabel="Go back"
+              onPress={() => navigation.navigate('Movies')}
+            >
+              <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>
             <View style={styles.bannerTextWrap}>
               <Text style={styles.title}>Showtimes</Text>
@@ -492,7 +497,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   backBtn: { backgroundColor: '#1c1c1c', padding: 14, borderRadius: 10 },
   backBtnText: { color: '#fff' },
   title: { color: '#fff', fontSize: 24, fontWeight: '700' },

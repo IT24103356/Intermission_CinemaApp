@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, ActivityIndicator, Image, Alert
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
@@ -81,6 +82,36 @@ export default function MovieDetailScreen({ route, navigation }) {
     });
   };
 
+  /** Calendar day in local time (strip time for comparisons). */
+  const startOfLocalDay = d => {
+    const x = new Date(d);
+    return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  };
+
+  const releaseLineForMovie = m => {
+    if (!m?.releaseDate) return null;
+    const releaseStart = startOfLocalDay(m.releaseDate);
+    const todayStart = startOfLocalDay(new Date());
+    const longDate = new Date(m.releaseDate).toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    if (m.status === 'Coming Soon') {
+      if (releaseStart > todayStart) {
+        return `Releasing on ${longDate}`;
+      }
+      return 'Now showing';
+    }
+
+    return `Released ${new Date(m.releaseDate).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })}`;
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -117,11 +148,18 @@ export default function MovieDetailScreen({ route, navigation }) {
     });
   };
 
+  const releaseLine = releaseLineForMovie(movie);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
 
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>← Back</Text>
+      <TouchableOpacity
+        style={styles.backButton}
+        accessibilityLabel="Go back"
+        onPress={() => navigation.goBack()}
+      >
+        <Ionicons name="chevron-back" size={20} color="#fff" style={styles.backIcon} />
+        <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
 
       <View style={styles.heroRow}>
@@ -147,11 +185,7 @@ export default function MovieDetailScreen({ route, navigation }) {
 
           <Text style={styles.metaLine}>{movie.genre}</Text>
           <Text style={styles.metaLine}>{movie.duration} min</Text>
-          {movie.releaseDate && (
-            <Text style={styles.metaLine}>
-              Released {new Date(movie.releaseDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-            </Text>
-          )}
+          {releaseLine ? <Text style={styles.metaLine}>{releaseLine}</Text> : null}
 
           {averageRating && averageRating.totalReviews > 0 && (
             <View style={styles.ratingBlock}>
@@ -234,8 +268,22 @@ const styles = StyleSheet.create({
   scrollContent:      { paddingBottom: 32 },
   centered:           { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f0f0f' },
   errorText:          { color: '#999', fontSize: 16 },
-  backButton:         { position: 'absolute', top: 52, left: 16, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.6)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  backText:           { color: '#fff', fontSize: 14 },
+  backButton: {
+    position: 'absolute',
+    top: 52,
+    left: 16,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 8,
+    paddingLeft: 4,
+    paddingRight: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backIcon: { marginRight: 2 },
+  backText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   heroRow:            { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 100, paddingBottom: 4, gap: 16, alignItems: 'flex-start' },
   posterThumb:        { width: 140, height: 210, borderRadius: 12, backgroundColor: '#1c1c1c' },
   posterThumbPlaceholder: {

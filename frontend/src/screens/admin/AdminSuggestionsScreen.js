@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../../context/AuthContext';
 import api from '../../api/axios';
 
@@ -28,9 +30,12 @@ function statusStyle(st) {
 export default function AdminSuggestionsScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const listPadBottom = Math.max(tabBarHeight, 112) + insets.bottom + 28;
 
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
 
   const loadSuggestions = useCallback(async () => {
@@ -68,6 +73,31 @@ export default function AdminSuggestionsScreen({ navigation }) {
     }
   };
 
+  const promptDeleteSuggestion = item => {
+    Alert.alert(
+      'Delete suggestion',
+      `Remove "${item.movieTitle}" permanently? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingId(item._id);
+              await api.delete(`/suggestions/${item._id}`);
+              await loadSuggestions();
+            } catch (err) {
+              Alert.alert('Delete failed', err.response?.data?.message || 'Could not delete suggestion');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (user?.role !== 'admin') {
     return (
       <View style={[styles.centered, { paddingBottom: tabBarHeight + 16 }]}>
@@ -90,16 +120,27 @@ export default function AdminSuggestionsScreen({ navigation }) {
       <FlatList
         data={suggestions}
         keyExtractor={item => item._id}
-        contentContainerStyle={{ padding: 16, paddingBottom: tabBarHeight + 24 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: listPadBottom }}
         ListHeaderComponent={
           <View style={styles.topBanner}>
             <View style={styles.bannerHeader}>
-              <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Movies')}>
-                <Text style={styles.backButtonText}>←</Text>
+              <TouchableOpacity
+                style={styles.backButton}
+                accessibilityLabel="Go back"
+                onPress={() => navigation.navigate('Movies')}
+              >
+                <Ionicons name="chevron-back" size={26} color="#fff" />
               </TouchableOpacity>
               <View style={styles.bannerTextWrap}>
                 <Text style={styles.title}>Suggestion Review</Text>
                 <Text style={styles.bannerCaption}>Review movie requests and track vote counts.</Text>
+                <TouchableOpacity
+                  style={styles.approvedLinkBtn}
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate('ApprovedSuggestions')}
+                >
+                  <Text style={styles.approvedLinkBtnText}>View approved · vote totals</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -107,11 +148,14 @@ export default function AdminSuggestionsScreen({ navigation }) {
         ListEmptyComponent={<Text style={styles.muted}>No suggestions available.</Text>}
         renderItem={({ item }) => {
           const st = statusStyle(item.status);
-          const busy = savingId === item._id;
+          const busy = savingId === item._id || deletingId === item._id;
+          const deleting = deletingId === item._id;
           return (
             <View style={styles.card}>
               <View style={styles.head}>
-                <Text style={styles.movieTitle}>{item.movieTitle}</Text>
+                <Text style={styles.movieTitle} numberOfLines={3}>
+                  {item.movieTitle}
+                </Text>
                 <View style={[styles.badge, { backgroundColor: st.bg }]}>
                   <Text style={[styles.badgeText, { color: st.color }]}>
                     {item.status || 'pending'}
@@ -122,6 +166,19 @@ export default function AdminSuggestionsScreen({ navigation }) {
               <Text style={styles.meta}>By {item.user?.name || 'User'} ({item.user?.email || 'no email'})</Text>
               {!!item.description && <Text style={styles.description}>{item.description}</Text>}
               <Text style={styles.votes}>{item.votes ?? 0} votes</Text>
+
+              <TouchableOpacity
+                style={[styles.deleteWide, busy && styles.disabled]}
+                disabled={busy}
+                activeOpacity={0.85}
+                onPress={() => promptDeleteSuggestion(item)}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteWideText}>Delete</Text>
+                )}
+              </TouchableOpacity>
 
               <View style={styles.actions}>
                 <TouchableOpacity
@@ -182,9 +239,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  backButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   title: { color: '#fff', fontSize: 24, fontWeight: '700' },
   bannerCaption: { color: '#ffd7db', fontSize: 14, marginTop: 6 },
+  approvedLinkBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  approvedLinkBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   muted: { color: MUTED, fontSize: 14, marginTop: 6 },
   card: {
     backgroundColor: CARD,
@@ -195,12 +262,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   head: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
-  movieTitle: { flex: 1, color: '#fff', fontSize: 17, fontWeight: '600' },
+  movieTitle: { flex: 1, color: '#fff', fontSize: 17, fontWeight: '600', minWidth: 0, paddingRight: 6 },
+  deleteWide: {
+    backgroundColor: '#dc2626',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  deleteWideText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   badgeText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   meta: { color: MUTED, fontSize: 13, marginTop: 6, marginBottom: 6 },
   description: { color: '#ddd', fontSize: 14, lineHeight: 20, marginBottom: 10 },
-  votes: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 12 },
+  votes: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 8 },
   actions: { flexDirection: 'row', gap: 8 },
   actionBtn: { flex: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
   approveBtn: { backgroundColor: '#177f3f' },
