@@ -61,6 +61,10 @@ export default function SuggestionScreen({ navigation }) {
   const [description, setDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingEdit, setPendingEdit] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -152,6 +156,44 @@ export default function SuggestionScreen({ navigation }) {
     }
   };
 
+  const openEdit = s => {
+    setPendingEdit(s);
+    setEditTitle(s.movieTitle || '');
+    setEditDescription(typeof s.description === 'string' ? s.description : '');
+  };
+
+  const closeEdit = () => {
+    if (savingEdit) return;
+    setPendingEdit(null);
+    setEditTitle('');
+    setEditDescription('');
+  };
+
+  const saveEdit = async () => {
+    if (!pendingEdit?._id) return;
+    const t = editTitle.trim();
+    if (t.length < 2) {
+      Alert.alert('Title', 'Enter a movie title (at least 2 characters).');
+      return;
+    }
+    try {
+      setSavingEdit(true);
+      await api.put(`/suggestions/${pendingEdit._id}`, {
+        movieTitle: t,
+        description: editDescription.trim(),
+      });
+      setPendingEdit(null);
+      setEditTitle('');
+      setEditDescription('');
+      await load();
+      Alert.alert('Saved', 'Your request was updated.');
+    } catch (err) {
+      Alert.alert('Could not save', err.response?.data?.message || 'Try again');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const renderItem = ({ item: s }) => {
     const own = isOwner(s, userId);
     const voted = hasVoted(s, userId);
@@ -179,28 +221,39 @@ export default function SuggestionScreen({ navigation }) {
         ) : null}
         <View style={styles.requestFoot}>
           <Text style={styles.votes}>{s.votes ?? 0} votes</Text>
-          {user && !own && canUpvote && (
-            <TouchableOpacity
-              style={[styles.voteBtn, (voted || votingId === s._id) && styles.voteBtnOff]}
-              onPress={() => !voted && vote(s._id)}
-              disabled={voted || votingId === s._id}
-            >
-              {votingId === s._id ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.voteBtnT}>{voted ? 'Voted' : 'Upvote'}</Text>
-              )}
-            </TouchableOpacity>
-          )}
-          {user && own && isPending && (
-            <Pressable
-              onPress={() => setPendingDelete(s)}
-              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-              style={({ pressed }) => [styles.deletePress, pressed && styles.deletePressPressed]}
-            >
-              <Text style={styles.dangerT}>Delete</Text>
-            </Pressable>
-          )}
+          <View style={styles.footActions}>
+            {user && !own && canUpvote && (
+              <TouchableOpacity
+                style={[styles.voteBtn, (voted || votingId === s._id) && styles.voteBtnOff]}
+                onPress={() => !voted && vote(s._id)}
+                disabled={voted || votingId === s._id}
+              >
+                {votingId === s._id ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.voteBtnT}>{voted ? 'Voted' : 'Upvote'}</Text>
+                )}
+              </TouchableOpacity>
+            )}
+            {user && own && isPending && (
+              <>
+                <Pressable
+                  onPress={() => openEdit(s)}
+                  hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                  style={({ pressed }) => [styles.editPress, pressed && styles.editPressPressed]}
+                >
+                  <Text style={styles.editT}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setPendingDelete(s)}
+                  hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                  style={({ pressed }) => [styles.deletePress, pressed && styles.deletePressPressed]}
+                >
+                  <Text style={styles.dangerT}>Delete</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -309,6 +362,62 @@ export default function SuggestionScreen({ navigation }) {
           }
         />
       )}
+
+      <Modal
+        visible={pendingEdit != null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeEdit}
+      >
+        <View style={styles.deleteModalWrap}>
+          <Pressable style={styles.deleteModalBackdrop} onPress={closeEdit} />
+          <View style={styles.deleteModalCard}>
+            <Text style={styles.deleteModalTitle}>Edit request</Text>
+            <Text style={styles.label}>Movie title</Text>
+            <TextInput
+              style={styles.input}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="Movie title"
+              placeholderTextColor="#666"
+              editable={!savingEdit}
+            />
+            <Text style={styles.label}>Why it should play (optional)</Text>
+            <TextInput
+              style={styles.textArea}
+              value={editDescription}
+              onChangeText={setEditDescription}
+              placeholder="Short reason…"
+              placeholderTextColor="#666"
+              multiline
+              editable={!savingEdit}
+            />
+            <Text style={styles.editHint}>
+              Approved requests cannot be edited.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.deleteModalBtnGhost]}
+                onPress={closeEdit}
+                disabled={savingEdit}
+              >
+                <Text style={styles.deleteModalBtnGhostT}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, styles.editSaveBtn]}
+                onPress={() => void saveEdit()}
+                disabled={savingEdit}
+              >
+                {savingEdit ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.editSaveBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={pendingDelete != null}
@@ -438,14 +547,21 @@ const styles = StyleSheet.create({
   badgeT: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
   byLine: { color: MUTED, fontSize: 12, marginBottom: 6 },
   desc: { color: '#ccc', fontSize: 14, lineHeight: 20, marginBottom: 10 },
-  requestFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  votes: { color: MUTED, fontSize: 13, fontWeight: '600' },
+  requestFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  footActions: { flexDirection: 'row', alignItems: 'center', gap: 14, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  votes: { color: MUTED, fontSize: 13, fontWeight: '600', flexShrink: 0 },
   voteBtn: { backgroundColor: ACCENT, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, minWidth: 88, alignItems: 'center' },
   voteBtnOff: { backgroundColor: '#333' },
   voteBtnT: { color: '#fff', fontWeight: '700', fontSize: 14 },
   dangerT: { color: '#c44', fontWeight: '600', fontSize: 14 },
+  editT: { color: ACCENT, fontWeight: '600', fontSize: 14 },
+  editPress: { paddingVertical: 8, paddingHorizontal: 4, justifyContent: 'center' },
+  editPressPressed: { opacity: 0.75 },
   deletePress: { paddingVertical: 8, paddingHorizontal: 4, justifyContent: 'center' },
   deletePressPressed: { opacity: 0.75 },
+  editHint: { color: MUTED, fontSize: 12, marginBottom: 16, lineHeight: 17 },
+  editSaveBtn: { backgroundColor: ACCENT },
+  editSaveBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   deleteModalWrap: {
     flex: 1,
     justifyContent: 'center',

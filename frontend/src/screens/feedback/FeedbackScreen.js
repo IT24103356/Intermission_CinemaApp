@@ -5,13 +5,13 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   FlatList,
   Modal,
   ActivityIndicator,
   Alert,
   Image,
-  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -87,7 +87,8 @@ export default function FeedbackScreen({ navigation }) {
   const [pickMovie, setPickMovie] = useState(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
-  const [deletingId, setDeletingId] = useState(null);
+  const [pendingDeleteReview, setPendingDeleteReview] = useState(null);
+  const [deletingReview, setDeletingReview] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [editRating, setEditRating] = useState(0);
@@ -200,28 +201,23 @@ export default function FeedbackScreen({ navigation }) {
     }
   };
 
-  const confirmDeleteReview = f => {
-    const title = f.movie?.title || 'this movie';
-    const go = async () => {
-      try {
-        setDeletingId(f._id);
-        await api.delete(`/feedback/${f._id}`);
-        await load();
-        Alert.alert('Removed', 'Your review was deleted.');
-      } catch (err) {
-        Alert.alert('Could not delete', err.response?.data?.message || 'Try again');
-      } finally {
-        setDeletingId(null);
-      }
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
-      if (window.confirm(`Delete your review for “${title}”?`)) void go();
-      return;
+  const closeDeleteReviewModal = () => {
+    if (!deletingReview) setPendingDeleteReview(null);
+  };
+
+  const executeDeleteReview = async () => {
+    if (!pendingDeleteReview?._id) return;
+    try {
+      setDeletingReview(true);
+      await api.delete(`/feedback/${pendingDeleteReview._id}`);
+      setPendingDeleteReview(null);
+      await load();
+      Alert.alert('Removed', 'Your review was deleted.');
+    } catch (err) {
+      Alert.alert('Could not delete', err.response?.data?.message || 'Try again');
+    } finally {
+      setDeletingReview(false);
     }
-    Alert.alert('Delete review?', `Remove your review for “${title}”?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void go() },
-    ]);
   };
 
   const openEditModal = f => {
@@ -402,22 +398,18 @@ export default function FeedbackScreen({ navigation }) {
                       <TouchableOpacity
                         style={styles.iconReviewBtn}
                         onPress={() => openEditModal(f)}
-                        disabled={deletingId === f._id || savingEdit}
+                        disabled={pendingDeleteReview != null || deletingReview || savingEdit}
                         accessibilityLabel="Edit review"
                       >
                         <Ionicons name="pencil-outline" size={20} color={ACCENT} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.iconReviewBtn}
-                        onPress={() => confirmDeleteReview(f)}
-                        disabled={deletingId === f._id || savingEdit}
+                        onPress={() => setPendingDeleteReview(f)}
+                        disabled={pendingDeleteReview != null || deletingReview || savingEdit}
                         accessibilityLabel="Delete review"
                       >
-                        {deletingId === f._id ? (
-                          <ActivityIndicator size="small" color={ACCENT} />
-                        ) : (
-                          <Ionicons name="trash-outline" size={20} color="#c44" />
-                        )}
+                        <Ionicons name="trash-outline" size={20} color="#c44" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -438,6 +430,45 @@ export default function FeedbackScreen({ navigation }) {
           )}
         </>
       )}
+
+      <Modal
+        visible={pendingDeleteReview != null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteReviewModal}
+      >
+        <View style={styles.deleteReviewModalWrap}>
+          <Pressable style={styles.deleteReviewModalBackdrop} onPress={closeDeleteReviewModal} />
+          <View style={styles.deleteReviewModalCard}>
+            <Text style={styles.deleteReviewModalTitle}>Are you sure you want to delete?</Text>
+            <Text style={styles.deleteReviewModalBody}>
+              {pendingDeleteReview
+                ? `This will remove your review for “${pendingDeleteReview.movie?.title || 'this movie'}”. You cannot undo this.`
+                : ''}
+            </Text>
+            <View style={styles.deleteReviewModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteReviewModalBtn, styles.deleteReviewModalBtnGhost]}
+                onPress={closeDeleteReviewModal}
+                disabled={deletingReview}
+              >
+                <Text style={styles.deleteReviewModalBtnGhostT}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteReviewModalBtn, styles.deleteReviewModalBtnDanger]}
+                onPress={() => void executeDeleteReview()}
+                disabled={deletingReview}
+              >
+                {deletingReview ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteReviewModalBtnDangerT}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={editModal} animationType="fade" transparent onRequestClose={closeEditModal}>
         <View style={styles.modalOverlay}>
@@ -710,4 +741,36 @@ const styles = StyleSheet.create({
   modalRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER, paddingHorizontal: 8 },
   modalRowT: { color: '#fff', fontSize: 16, flex: 1, paddingRight: 8 },
   modalClose: { padding: 16, alignItems: 'center' },
+  deleteReviewModalWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  deleteReviewModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  deleteReviewModalCard: {
+    backgroundColor: CARD,
+    borderRadius: 16,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: BORDER,
+    zIndex: 1,
+  },
+  deleteReviewModalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  deleteReviewModalBody: { color: '#ccc', fontSize: 15, lineHeight: 22, marginBottom: 22 },
+  deleteReviewModalActions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end' },
+  deleteReviewModalBtn: {
+    minWidth: 108,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteReviewModalBtnGhost: { backgroundColor: BG, borderWidth: 1, borderColor: BORDER },
+  deleteReviewModalBtnGhostT: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  deleteReviewModalBtnDanger: { backgroundColor: '#9a1f1f' },
+  deleteReviewModalBtnDangerT: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

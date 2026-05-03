@@ -1,5 +1,9 @@
 const Suggestion = require('../models/Suggestion');
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // GET all suggestions
 exports.getSuggestions = async (req, res) => {
   try {
@@ -128,27 +132,53 @@ exports.voteSuggestion = async (req, res) => {
   }
 };
 
-// PUT update suggestion (owner only)
+// PUT update suggestion (owner only, pending only — not after approval)
 exports.updateSuggestion = async (req, res) => {
   try {
     const suggestion = await Suggestion.findById(req.params.id);
     if (!suggestion) return res.status(404).json({ message: 'Suggestion not found' });
 
-    // Only owner can edit
-    if (suggestion.user.toString() !== req.user.id) {
+    const ownerId = String(suggestion.user?._id ?? suggestion.user);
+    if (ownerId !== String(req.user.id)) {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    // Cannot edit if already approved
-    if (suggestion.status === 'approved') {
-      return res.status(400).json({ message: 'Cannot edit an approved suggestion' });
+    const st = suggestion.status || 'pending';
+    if (st !== 'pending') {
+      const msg =
+        st === 'approved'
+          ? 'Approved requests cannot be edited.'
+          : 'This request can no longer be edited.';
+      return res.status(400).json({ message: msg });
     }
 
-    const updated = await Suggestion.findByIdAndUpdate(
-      req.params.id,
-      { movieTitle: req.body.movieTitle, description: req.body.description },
-      { new: true, runValidators: true }
-    );
+    const movieTitle = String(req.body.movieTitle ?? '').trim();
+    if (movieTitle.length < 2) {
+      return res.status(400).json({ message: 'Movie title must be at least 2 characters.' });
+    }
+
+    const dup = await Suggestion.findOne({
+      _id: { $ne: suggestion._id },
+      movieTitle: { $regex: new RegExp(`^${escapeRegex(movieTitle)}$`, 'i') },
+    });
+    if (dup) {
+      return res.status(400).json({
+        message: 'This movie has already been suggested. Vote for it instead!',
+      });
+    }
+
+    const descTrim = String(req.body.description ?? '').trim();
+    const patch = { movieTitle };
+    if (descTrim === '') {
+      patch.$unset = { description: '' };
+    } else {
+      patch.description = descTrim;
+    }
+
+    const updated = await Suggestion.findByIdAndUpdate(req.params.id, patch, {
+      new: true,
+      runValidators: true,
+    });
 
     res.json(updated);
   } catch (err) {
