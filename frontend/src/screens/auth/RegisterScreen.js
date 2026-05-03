@@ -55,7 +55,7 @@ export default function RegisterScreen({ navigation }) {
     >
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
 
-        <Text style={styles.title}>🎬 CineBook</Text>
+        <Text style={styles.title}>Intermission</Text>
         <Text style={styles.subtitle}>Create your account</Text>
 
         <TextInput
