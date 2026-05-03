@@ -145,7 +145,7 @@ export default function MovieDetailScreen({ route, navigation }) {
     navigation.navigate('Showtimes', {
       movieId,
       movieTitle: movie.title,
-      dayStartMs: startOfLocalDay(next.date).getTime(),
+      dayStartMs: startOfLocalDay(next.date),
     });
   };
 
@@ -253,7 +253,7 @@ export default function MovieDetailScreen({ route, navigation }) {
                   navigation.navigate('Showtimes', {
                     movieId,
                     movieTitle: movie.title,
-                    dayStartMs: startOfLocalDay(show.date).getTime(),
+                    dayStartMs: startOfLocalDay(show.date),
                   })
                 }
               >
