@@ -143,8 +143,9 @@ export default function MovieDetailScreen({ route, navigation }) {
       return;
     }
     navigation.navigate('Showtimes', {
-      showtimeId: next._id,
+      movieId,
       movieTitle: movie.title,
+      dayStartMs: startOfLocalDay(next.date).getTime(),
     });
   };
 
@@ -249,7 +250,11 @@ export default function MovieDetailScreen({ route, navigation }) {
                 key={show._id}
                 style={styles.showtimeCard}
                 onPress={() =>
-                  navigation.navigate('Showtimes', { showtimeId: show._id, movieTitle: movie.title })
+                  navigation.navigate('Showtimes', {
+                    movieId,
+                    movieTitle: movie.title,
+                    dayStartMs: startOfLocalDay(show.date).getTime(),
+                  })
                 }
               >
                 {cardInner}

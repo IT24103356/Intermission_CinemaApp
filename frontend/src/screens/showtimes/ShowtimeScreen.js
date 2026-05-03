@@ -8,11 +8,17 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../api/axios';
 import { AuthContext } from '../../context/AuthContext';
 
+const startOfLocalDay = d => {
+  const x = new Date(d);
+  return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+};
+
 export default function ShowtimeScreen({ route, navigation }) {
   const { user } = useContext(AuthContext);
   const isAdmin = user?.role === 'admin';
   const adminBounce = useRef(false);
-  const { showtimeId, movieTitle } = route.params;
+  const p = route.params || {};
+  const { movieTitle = 'Movie', movieId: paramMovieId, dayStartMs: paramDayStartMs, showtimeId } = p;
 
   useLayoutEffect(() => {
     if (isAdmin && !adminBounce.current) {
@@ -21,38 +27,67 @@ export default function ShowtimeScreen({ route, navigation }) {
     }
   }, [isAdmin, navigation]);
 
-  const [showtime, setShowtime] = useState(null);
-  const [takenSeats, setTakenSeats] = useState([]);
+  const [dayShowtimes, setDayShowtimes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchShowtime = useCallback(async () => {
-    if (!showtimeId) return;
+  const fetchDayShowtimes = useCallback(async () => {
     setLoading(true);
     try {
-      const [showRes, takenRes] = await Promise.all([
-        api.get(`/showtimes/${showtimeId}`),
-        api.get(`/bookings/showtime/${showtimeId}/taken`),
-      ]);
-      setShowtime(showRes.data);
-      setTakenSeats(Array.isArray(takenRes.data?.takenSeats) ? takenRes.data.takenSeats : []);
+      let movieId = paramMovieId;
+      let dayStartMs = paramDayStartMs;
+      if ((movieId == null || dayStartMs == null) && showtimeId) {
+        const stRes = await api.get(`/showtimes/${showtimeId}`);
+        const st = stRes.data;
+        movieId = st.movie?._id ?? st.movie;
+        dayStartMs = startOfLocalDay(st.date);
+      }
+      if (movieId == null || dayStartMs == null) {
+        Alert.alert('Error', 'Missing movie or date for showtimes.');
+        setDayShowtimes([]);
+        return;
+      }
+      const listRes = await api.get(`/showtimes/movie/${movieId}`);
+      const list = Array.isArray(listRes.data) ? listRes.data : [];
+      const dms = typeof dayStartMs === 'number' ? dayStartMs : startOfLocalDay(dayStartMs);
+      const filtered = list
+        .filter(s => startOfLocalDay(s.date) === dms)
+        .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+      setDayShowtimes(filtered);
     } catch (err) {
-      Alert.alert('Error', 'Could not load showtime');
+      Alert.alert('Error', 'Could not load showtimes');
+      setDayShowtimes([]);
     } finally {
       setLoading(false);
     }
-  }, [showtimeId]);
+  }, [paramMovieId, paramDayStartMs, showtimeId]);
 
   useFocusEffect(
     useCallback(() => {
       if (isAdmin) return;
-      fetchShowtime();
-    }, [fetchShowtime, isAdmin])
+      fetchDayShowtimes();
+    }, [fetchDayShowtimes, isAdmin])
   );
 
   const formatDate = (dateStr) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
+  };
+
+  const openSeatBooking = async (st) => {
+    if (st.availableSeats === 0) return;
+    try {
+      const takenRes = await api.get(`/bookings/showtime/${st._id}/taken`);
+      const takenSeats = Array.isArray(takenRes.data?.takenSeats) ? takenRes.data.takenSeats : [];
+      navigation.navigate('SeatBooking', {
+        showtimeId: st._id,
+        movieTitle,
+        showtime: st,
+        takenSeats,
+      });
+    } catch {
+      Alert.alert('Error', 'Could not load seats for this showtime');
+    }
   };
 
   if (isAdmin) {
@@ -67,6 +102,8 @@ export default function ShowtimeScreen({ route, navigation }) {
     );
   }
 
+  const headerDate = dayShowtimes[0]?.date;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.topBanner}>
@@ -80,47 +117,44 @@ export default function ShowtimeScreen({ route, navigation }) {
           </TouchableOpacity>
           <View style={styles.bannerTextWrap}>
             <Text style={styles.movieTitle}>{movieTitle}</Text>
-            <Text style={styles.date}>{formatDate(showtime.date)}</Text>
+            <Text style={styles.date}>
+              {headerDate ? formatDate(headerDate) : 'Select a showtime'}
+            </Text>
           </View>
         </View>
       </View>
 
-      <View style={styles.header}>
-        <View style={styles.metaRow}>
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>Time</Text>
-            <Text style={styles.metaValue}>{showtime.time}</Text>
-          </View>
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>Screen</Text>
-            <Text style={styles.metaValue}>{showtime.screenNumber}</Text>
-          </View>
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>Available</Text>
-            <Text style={styles.metaValue}>{showtime.availableSeats}</Text>
-          </View>
+      {dayShowtimes.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyText}>No showtimes for this day.</Text>
         </View>
-      </View>
-
-      <View style={styles.bookingSection}>
-        <TouchableOpacity
-          style={[styles.bookButton, showtime.availableSeats === 0 && styles.bookButtonDisabled]}
-          disabled={showtime.availableSeats === 0}
-          onPress={() =>
-            navigation.navigate('SeatBooking', {
-              showtimeId: showtime._id,
-              movieTitle,
-              showtime,
-              takenSeats,
-            })
-          }
-        >
-          <Text style={styles.bookButtonText}>
-            {showtime.availableSeats === 0 ? 'Sold Out' : 'Select Seats & Book'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
+      ) : (
+        dayShowtimes.map(st => (
+          <TouchableOpacity
+            key={st._id}
+            style={[styles.showRow, st.availableSeats === 0 && styles.showRowDisabled]}
+            disabled={st.availableSeats === 0}
+            onPress={() => void openSeatBooking(st)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.showRowLeft}>
+              <Text style={styles.showTime}>{st.time}</Text>
+              <Text style={styles.showSub}>Screen {st.screenNumber}</Text>
+            </View>
+            <View style={styles.showRowRight}>
+              <Text style={[styles.seatsLeft, st.availableSeats === 0 && styles.soldOut]}>
+                {st.availableSeats === 0 ? 'Sold out' : `${st.availableSeats} seats left`}
+              </Text>
+              {st.availableSeats > 0 ? (
+                <Text style={styles.chevronHint}>Select seats</Text>
+              ) : null}
+            </View>
+            {st.availableSeats > 0 ? (
+              <Ionicons name="chevron-forward" size={20} color="#888" style={styles.rowChevron} />
+            ) : null}
+          </TouchableOpacity>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -154,15 +188,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.12)',
   },
-  header:              { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 8 },
   movieTitle:          { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 6 },
   date:                { fontSize: 14, color: '#ffd7db', marginBottom: 0 },
-  metaRow:             { flexDirection: 'row', gap: 12 },
-  metaBox:             { flex: 1, backgroundColor: '#1c1c1c', borderRadius: 10, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#2a2a2a' },
-  metaLabel:           { fontSize: 11, color: '#666', marginBottom: 4 },
-  metaValue:           { fontSize: 16, fontWeight: '600', color: '#fff' },
-  bookingSection:      { padding: 20 },
-  bookButton:          { backgroundColor: '#e50914', borderRadius: 10, padding: 16, alignItems: 'center' },
-  bookButtonDisabled:  { backgroundColor: '#333' },
-  bookButtonText:      { color: '#fff', fontSize: 16, fontWeight: '600' },
+  emptyWrap:           { paddingVertical: 24, paddingHorizontal: 8 },
+  emptyText:           { color: '#888', fontSize: 15, textAlign: 'center' },
+  showRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1c1c1c',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  showRowDisabled:     { opacity: 0.65 },
+  showRowLeft:         { flex: 1 },
+  showTime:            { fontSize: 20, fontWeight: '700', color: '#e50914' },
+  showSub:             { fontSize: 13, color: '#999', marginTop: 4 },
+  showRowRight:        { alignItems: 'flex-end', marginRight: 4 },
+  seatsLeft:           { fontSize: 13, color: '#aaa' },
+  soldOut:             { color: '#666' },
+  chevronHint:         { fontSize: 12, color: '#e50914', marginTop: 4, fontWeight: '600' },
+  rowChevron:          { marginLeft: 4 },
 });
