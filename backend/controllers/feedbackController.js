@@ -160,11 +160,17 @@ exports.updateFeedback = async (req, res) => {
   }
 };
 
-// DELETE feedback (admin only — users cannot remove their own reviews)
+// DELETE feedback — only the author may remove their review (not admins for others)
 exports.deleteFeedback = async (req, res) => {
   try {
     const feedback = await Feedback.findById(req.params.id);
     if (!feedback) return res.status(404).json({ message: 'Feedback not found' });
+
+    const ownerId = String(feedback.user?._id ?? feedback.user);
+    const requesterId = String(req.user.id);
+    if (ownerId !== requesterId) {
+      return res.status(403).json({ message: 'You can only delete your own feedback' });
+    }
 
     await Feedback.findByIdAndDelete(req.params.id);
     res.json({ message: 'Feedback deleted successfully' });

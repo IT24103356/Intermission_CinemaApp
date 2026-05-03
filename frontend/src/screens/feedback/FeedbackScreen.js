@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -86,6 +87,7 @@ export default function FeedbackScreen({ navigation }) {
   const [pickMovie, setPickMovie] = useState(null);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
   const reviewFilterOptions = useMemo(() => {
     const map = new Map();
@@ -191,6 +193,30 @@ export default function FeedbackScreen({ navigation }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const confirmDeleteReview = f => {
+    const title = f.movie?.title || 'this movie';
+    const go = async () => {
+      try {
+        setDeletingId(f._id);
+        await api.delete(`/feedback/${f._id}`);
+        await load();
+        Alert.alert('Removed', 'Your review was deleted.');
+      } catch (err) {
+        Alert.alert('Could not delete', err.response?.data?.message || 'Try again');
+      } finally {
+        setDeletingId(null);
+      }
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      if (window.confirm(`Delete your review for “${title}”?`)) void go();
+      return;
+    }
+    Alert.alert('Delete review?', `Remove your review for “${title}”?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void go() },
+    ]);
   };
 
   const padBottom = tabBarHeight + 16;
@@ -327,9 +353,23 @@ export default function FeedbackScreen({ navigation }) {
                   </View>
                 )}
                 <View style={styles.reviewBody}>
-                  <Text style={styles.reviewTitle} numberOfLines={2}>
-                    {title}
-                  </Text>
+                  <View style={styles.reviewTitleRow}>
+                    <Text style={styles.reviewTitle} numberOfLines={2}>
+                      {title}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.deleteReviewBtn}
+                      onPress={() => confirmDeleteReview(f)}
+                      disabled={deletingId === f._id}
+                      accessibilityLabel="Delete review"
+                    >
+                      {deletingId === f._id ? (
+                        <ActivityIndicator size="small" color={ACCENT} />
+                      ) : (
+                        <Ionicons name="trash-outline" size={20} color="#c44" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
                   <StarDisplay value={f.rating} size={20} />
                   {f.comment ? <Text style={styles.reviewComment}>{f.comment}</Text> : null}
                 </View>
@@ -528,7 +568,13 @@ const styles = StyleSheet.create({
   thumbPh: { alignItems: 'center', justifyContent: 'center' },
   thumbEm: { fontSize: 24 },
   reviewBody: { flex: 1, minWidth: 0 },
-  reviewTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  reviewTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  reviewTitle: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '600' },
+  deleteReviewBtn: {
+    padding: 6,
+    marginTop: -4,
+    marginRight: -4,
+  },
   reviewComment: { color: MUTED, fontSize: 14, marginTop: 6 },
   adminReplyBox: {
     marginTop: 12,
