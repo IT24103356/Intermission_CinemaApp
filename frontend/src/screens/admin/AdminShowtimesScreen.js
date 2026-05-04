@@ -35,6 +35,13 @@ function dateIsoUtcNoonFromYmd(yyyyMmDd) {
   return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0, 0)).toISOString();
 }
 
+/** YYYY-MM-DD before today (local) — past days cannot be cleared from the schedule. */
+function isPastLocalCalendarDayYmd(yyyyMmDd) {
+  const s = yyyyMmDd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  return s < toLocalDateString(new Date());
+}
+
 export default function AdminShowtimesScreen({ navigation }) {
   const { user } = useContext(AuthContext);
   const isAdmin = user?.role === 'admin';
@@ -168,6 +175,8 @@ export default function AdminShowtimesScreen({ navigation }) {
     [dateStr]
   );
 
+  const selectedDayIsPast = useMemo(() => isPastLocalCalendarDayYmd(dateStr), [dateStr]);
+
   const handleSave = async () => {
     if (!isAdmin) return;
     const dateIso = dateIsoUtcNoonFromYmd(dateStr);
@@ -250,6 +259,13 @@ export default function AdminShowtimesScreen({ navigation }) {
 
   const handleDelete = (id) => {
     if (!isAdmin) return;
+    if (selectedDayIsPast) {
+      Alert.alert(
+        'Cannot remove',
+        'Showtimes on dates that have already passed cannot be deleted. Choose today or a future date to remove a screening.'
+      );
+      return;
+    }
     Alert.alert('Delete showtime', 'Remove this showtime? Existing bookings may be affected.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -343,6 +359,11 @@ export default function AdminShowtimesScreen({ navigation }) {
           <Text style={styles.scheduleHint}>
             Tap Edit to load that screening into the form below, change fields, then use Save changes.
           </Text>
+          {selectedDayIsPast && list.length > 0 ? (
+            <Text style={styles.muted}>
+              This date is in the past. Showtimes here cannot be removed (use today or a future day to delete screenings).
+            </Text>
+          ) : null}
           {list.length === 0 && !listLoading ? (
             <Text style={styles.muted}>No showtimes on this date yet.</Text>
           ) : (
@@ -371,7 +392,8 @@ export default function AdminShowtimesScreen({ navigation }) {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDelete(st._id)}
-                      style={styles.removeBtn}
+                      style={[styles.removeBtn, selectedDayIsPast && styles.removeBtnDisabled]}
+                      disabled={selectedDayIsPast}
                     >
                       <Text style={styles.removeBtnText}>Remove</Text>
                     </TouchableOpacity>
@@ -622,6 +644,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f87171',
   },
+  removeBtnDisabled: { opacity: 0.45 },
   removeBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24,

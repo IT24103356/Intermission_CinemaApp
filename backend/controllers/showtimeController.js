@@ -5,6 +5,15 @@ const {
   withComputedAvailableMany,
 } = require('../utils/showtimeAvailability');
 
+/** Calendar YYYY-MM-DD in UTC (matches dates stored as UTC noon on that day). */
+function utcYmd(d) {
+  const x = d instanceof Date ? d : new Date(d);
+  const y = x.getUTCFullYear();
+  const m = String(x.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(x.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // GET all showtimes
 exports.getShowtimes = async (req, res) => {
   try {
@@ -105,8 +114,16 @@ exports.updateShowtime = async (req, res) => {
 // DELETE showtime
 exports.deleteShowtime = async (req, res) => {
   try {
-    const showtime = await Showtime.findByIdAndDelete(req.params.id);
+    const showtime = await Showtime.findById(req.params.id);
     if (!showtime) return res.status(404).json({ message: 'Showtime not found' });
+    const showYmd = utcYmd(showtime.date);
+    const todayYmd = utcYmd(new Date());
+    if (showYmd < todayYmd) {
+      return res.status(400).json({
+        message: 'Cannot delete showtimes for dates that have already passed.',
+      });
+    }
+    await Showtime.deleteOne({ _id: showtime._id });
     res.json({ message: 'Showtime deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
